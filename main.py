@@ -1,7 +1,12 @@
 import jax
 import jax.numpy as jnp
 
-key = jax.random.PRNGKey(0)
+
+def xavier_init(key, shape, gain=1.0):
+    # https://pytorch.org/docs/stable/nn.init.html#torch.nn.init.xavier_uniform_
+    assert len(shape) == 2
+    a = gain * jnp.sqrt(6.0 / (shape[0] + shape[1]))
+    return a * jax.random.normal(key, shape)
 
 
 def interleave_two_arrays(a, b):

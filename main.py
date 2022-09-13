@@ -21,11 +21,9 @@ def softmax(x):
     return jnp.exp(x) / jnp.sum(jnp.exp(x))
 
 
-def layer_norm(a):
-    # https://arxiv.org/pdf/1607.06450.pdf
-    u = jnp.mean(a)
-    o = jnp.sqrt(jnp.mean((a - u) ** 2))
-    return o
+def layer_norm(x, gamma, beta, eps=1e-8):
+    # https://pytorch.org/docs/stable/generated/torch.nn.LayerNorm.html
+    return gamma * (x - jnp.mean(x)) / (jnp.std(x) + eps) + beta
 
 
 def positional_embedding(pos, d_model, dtype=jnp.float32):
@@ -129,6 +127,10 @@ def decoder_layer():
     pass
 
 
+def create_layer_norm_params():
+    return {"gamma": jnp.array(1), "beta": jnp.array(0)}
+
+
 def create_position_wise_ffn(key, d_model, d_ff):
     key, W1_subkey = jax.random.split(key)
     key, b1_subkey = jax.random.split(key)
@@ -173,7 +175,9 @@ def create_encoder_layer(key, d_model, d_k, d_v, d_ff, h):
     key, position_wise_ffn = create_position_wise_ffn(key, d_model, d_ff)
     return key, {
         "multihead_attention_weights": multihead_attention_weights,
+        "layer_norm1": create_layer_norm_params(),
         "position_wise_ffn": position_wise_ffn,
+        "layer_norm2": create_layer_norm_params(),
     }
 
 
@@ -187,8 +191,11 @@ def create_decoder_layer(key, d_model, d_k, d_v, d_ff, h):
     key, position_wise_ffn = create_position_wise_ffn(key, d_model, d_ff)
     return key, {
         "multihead_attention_weights": multihead_attention_weights,
+        "layer_norm1": create_layer_norm_params(),
         "masked_multihead_attention_weights": masked_multihead_attention_weights,
+        "layer_norm2": create_layer_norm_params(),
         "position_wise_ffn": position_wise_ffn,
+        "layer_norm3": create_layer_norm_params(),
     }
 
 

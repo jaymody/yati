@@ -131,7 +131,7 @@ def create_layer_norm_params():
     return {"gamma": jnp.array(1), "beta": jnp.array(0)}
 
 
-def create_position_wise_ffn(key, d_model, d_ff):
+def create_position_wise_ffn_weights(key, d_model, d_ff):
     key, W1_subkey = jax.random.split(key)
     key, b1_subkey = jax.random.split(key)
     key, W2_subkey = jax.random.split(key)
@@ -172,12 +172,14 @@ def create_encoder_layer(key, d_model, d_k, d_v, d_ff, h):
     key, multihead_attention_weights = create_mutlihead_attention_weights(
         key, d_model, d_k, d_v, h
     )
-    key, position_wise_ffn = create_position_wise_ffn(key, d_model, d_ff)
+    key, position_wise_ffn_weights = create_position_wise_ffn_weights(
+        key, d_model, d_ff
+    )
     return key, {
         "multihead_attention_weights": multihead_attention_weights,
-        "layer_norm1": create_layer_norm_params(),
-        "position_wise_ffn": position_wise_ffn,
-        "layer_norm2": create_layer_norm_params(),
+        "layer_norm1_params": create_layer_norm_params(),
+        "position_wise_ffn_weights": position_wise_ffn_weights,
+        "layer_norm2_params": create_layer_norm_params(),
     }
 
 
@@ -188,14 +190,16 @@ def create_decoder_layer(key, d_model, d_k, d_v, d_ff, h):
     key, masked_multihead_attention_weights = create_mutlihead_attention_weights(
         key, d_model, d_k, d_v, h
     )
-    key, position_wise_ffn = create_position_wise_ffn(key, d_model, d_ff)
+    key, position_wise_ffn_weights = create_position_wise_ffn_weights(
+        key, d_model, d_ff
+    )
     return key, {
         "multihead_attention_weights": multihead_attention_weights,
-        "layer_norm1": create_layer_norm_params(),
+        "layer_norm1_params": create_layer_norm_params(),
         "masked_multihead_attention_weights": masked_multihead_attention_weights,
-        "layer_norm2": create_layer_norm_params(),
-        "position_wise_ffn": position_wise_ffn,
-        "layer_norm3": create_layer_norm_params(),
+        "layer_norm2_params": create_layer_norm_params(),
+        "position_wise_ffn_weights": position_wise_ffn_weights,
+        "layer_norm3_params": create_layer_norm_params(),
     }
 
 

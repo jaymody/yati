@@ -82,6 +82,8 @@ def multihead_attention(Q, K, V, WQ, WK, WV, WO):
     # h = number of attentions heads
     # output -> (seq_len, d_model)
 
+    # TODO: don't use a for loop here, you can probably implement this via vectorized
+    # functions
     h = WQ.shape[0]
     heads = []
     for i in range(h):

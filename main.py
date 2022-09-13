@@ -9,14 +9,6 @@ def xavier_init(key, shape, gain=1.0):
     return a * jax.random.normal(key, shape)
 
 
-def interleave_two_arrays(a, b):
-    # https://stackoverflow.com/questions/5347065/interweaving-two-numpy-arrays
-    c = jnp.empty((a.size, b.size), dtype=a.dtype)
-    c[0::2] = a
-    c[1::2] = b
-    return c
-
-
 def relu(x):
     # x -> (d_model)
     # output -> (d_model)
@@ -36,17 +28,22 @@ def layer_norm(a):
     return o
 
 
-def positional_embeddings(pos, d_model):
+def positional_embedding(pos, d_model, dtype=jnp.float32):
     # TODO: do we start indexing at 0 or 1, I'm assuming it's implied as 1 by the paper
     # since we are using mathematical notation (not that it will make a difference
-    # anyways)
+    # anyways, but it does change the result of the equation slightly)
     odd_indices = jnp.arange(2, d_model + 1, 2)
     even_indices = jnp.arange(1, d_model + 1, 2)
 
-    odd_values = jnp.cos(pos / jnp.power(10000, 2 * odd_indices / d_model))
-    even_values = jnp.sin(pos / jnp.power(10000, 2 * even_indices / d_model))
+    embedding = jnp.empty((d_model,), dtype=dtype)
+    embedding = embedding.at[odd_indices - 1].set(
+        jnp.cos(pos / jnp.power(10000, 2 * odd_indices / d_model))
+    )
+    embedding = embedding.at[even_indices - 1].set(
+        jnp.sin(pos / jnp.power(10000, 2 * even_indices / d_model))
+    )
 
-    return interleave_two_arrays(odd_values, even_values)
+    return embedding
 
 
 def feed_forward_network(x, W1, b1, W2, b2):

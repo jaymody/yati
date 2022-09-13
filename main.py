@@ -91,40 +91,51 @@ def multihead_attention(Q, K, V, WQ, WK, WV, WO):
     return jnp.concatenate(heads) @ WO
 
 
-def encoder_layer():
+def encoder_layer(X, encoder_layer_weights):
     # X -> (seq_len, d_model)
-
-    # ---- MultiHead Attention ----
-    # out1 = multihead_attention(X, X, X)
-    # out2 = norm(X + out1)
-
-    # ---- Feed Forward ----
-    # out3 = position_wise_ffn(out2)
-    # out4 = norm(out2 + out3)
-
     # output -> (seq_len, d_model)
-    pass
+
+    # multihead attention
+    prev = X
+    out = multihead_attention(
+        X, X, X, **encoder_layer_weights["multihead_attention_weights"]
+    )
+    out = layer_norm(prev + out, **encoder_layer_weights["layer_norm1_params"])
+
+    # position wise ffn
+    prev = out
+    out = position_wise_ffn(out, **encoder_layer_weights["position_wise_ffn_weights"])
+    out = layer_norm(prev + out, **encoder_layer_weights["layer_norm2_params"])
+
+    return out
 
 
-def decoder_layer():
+def decoder_layer(X, Z, decoder_layer_weights):
     # X -> (seq_len, d_model)
     # Z -> (seq_len, d_model) which is the encoder outputs
-
-    # ---- Masked MultiHead Attention ----
-    # TODO: figure out how masking is implemented (should be done at sdp atn layer)
-    # out1 = multihead_attention(X, X, X)
-    # out2 = norm(X + out1)
-
-    # ---- MultiHead Attention ----
-    # out3 = multihead_attention(out2, Z, Z)
-    # out4 = norm(X + out2)
-
-    # ---- Feed Forward ----
-    # out5 = position_wise_ffn(out4)
-    # out6 = norm(out4 + out5)
-
     # output -> (seq_len, d_model)
-    pass
+
+    # masked multihead attention
+    # TODO: figure out how masking is implemented (should be done at sdp atn layer)
+    prev = X
+    out = multihead_attention(
+        X, X, X, **decoder_layer_weights["masked_multihead_attention_weights"]
+    )
+    out = layer_norm(prev + out, **decoder_layer_weights["layer_norm1_params"])
+
+    # multihead attention
+    prev = out
+    out = multihead_attention(
+        out, Z, Z, **decoder_layer_weights["multihead_attention_weights"]
+    )
+    out = layer_norm(prev + out, **decoder_layer_weights["layer_norm2_params"])
+
+    # position wise ffn
+    prev = out
+    out = position_wise_ffn(out, **decoder_layer_weights["position_wise_ffn_weights"])
+    out = layer_norm(prev + out, **decoder_layer_weights["layer_norm3_params"])
+
+    return out
 
 
 def create_layer_norm_params():

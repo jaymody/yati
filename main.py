@@ -46,7 +46,7 @@ def positional_embedding(pos, d_model, dtype=jnp.float32):
     return embedding
 
 
-def feed_forward_network(x, W1, b1, W2, b2):
+def position_wise_ffn(x, W1, b1, W2, b2):
     # X -> (d_model)
     # W1 -> (d_model, d_ff)
     # b1 -> (d_ff)
@@ -101,7 +101,7 @@ def encoder_layer():
     # out2 = norm(X + out1)
 
     # ---- Feed Forward ----
-    # out3 = feed_forward_network(out2)
+    # out3 = position_wise_ffn(out2)
     # out4 = norm(out2 + out3)
 
     # output -> (seq_len, d_model)
@@ -122,14 +122,14 @@ def decoder_layer():
     # out4 = norm(X + out2)
 
     # ---- Feed Forward ----
-    # out5 = feed_forward_network(out4)
+    # out5 = position_wise_ffn(out4)
     # out6 = norm(out4 + out5)
 
     # output -> (seq_len, d_model)
     pass
 
 
-def create_feed_forward_network_weights(key, d_model, d_ff):
+def create_position_wise_ffn(key, d_model, d_ff):
     key, W1_subkey = jax.random.split(key)
     key, b1_subkey = jax.random.split(key)
     key, W2_subkey = jax.random.split(key)
@@ -170,12 +170,10 @@ def create_encoder_layer(key, d_model, d_k, d_v, d_ff, h):
     key, multihead_attention_weights = create_mutlihead_attention_weights(
         key, d_model, d_k, d_v, h
     )
-    key, feed_forward_network_weights = create_feed_forward_network_weights(
-        key, d_model, d_ff
-    )
+    key, position_wise_ffn = create_position_wise_ffn(key, d_model, d_ff)
     return key, {
         "multihead_attention_weights": multihead_attention_weights,
-        "feed_forward_network_weights": feed_forward_network_weights,
+        "position_wise_ffn": position_wise_ffn,
     }
 
 
@@ -186,13 +184,11 @@ def create_decoder_layer(key, d_model, d_k, d_v, d_ff, h):
     key, masked_multihead_attention_weights = create_mutlihead_attention_weights(
         key, d_model, d_k, d_v, h
     )
-    key, feed_forward_network_weights = create_feed_forward_network_weights(
-        key, d_model, d_ff
-    )
+    key, position_wise_ffn = create_position_wise_ffn(key, d_model, d_ff)
     return key, {
         "multihead_attention_weights": multihead_attention_weights,
         "masked_multihead_attention_weights": masked_multihead_attention_weights,
-        "feed_forward_network_weights": feed_forward_network_weights,
+        "position_wise_ffn": position_wise_ffn,
     }
 
 

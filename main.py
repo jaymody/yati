@@ -21,6 +21,23 @@ def softmax(x):
     return jnp.exp(x) / jnp.sum(jnp.exp(x))
 
 
+def create_pad_mask(x, pad_idx):
+    # x -> (seq_len)
+    # output -> (seq_len, seq_len), positions that are True will be masked out
+    return (x == pad_idx).reshape(1, -1) | (x == pad_idx).reshape(-1, 1)
+
+
+def create_illegal_connections_mask(seq_len):
+    # output -> (seq_len, seq_len), positions that are True will be masked out
+    return ~jnp.tri(seq_len, seq_len, k=0, dtype=jnp.bool_)
+
+
+def create_mask(x, pad_idx):
+    # x -> (seq_len)
+    # output -> (seq_len, seq_len), positions that are True will be masked out
+    return create_pad_mask(x, pad_idx) | create_illegal_connections_mask(x.shape[0])
+
+
 def layer_norm(x, gamma, beta, eps=1e-8):
     # https://pytorch.org/docs/stable/generated/torch.nn.LayerNorm.html
     return gamma * (x - jnp.mean(x)) / (jnp.std(x) + eps) + beta
@@ -59,20 +76,28 @@ def final_linear_layer(x, W1, b1):
     return softmax(x @ W1 + b1)
 
 
-def scaled_dot_product_attention(Q, K, V):
+def scaled_dot_product_attention(Q, K, V, mask=None):
     # Q -> (seq_len, d_k)
     # K -> (seq_len, d_k)
     # V -> (seq_len, d_v)
+    # mask -> (seq_len, seq_len)
+    #   mask[i][j] = True means mask this connection (illegal connection)
+    #   mask[i][j] = False means don't mask this connection (valid connection)
+    #   mask = None means no masking (in other words, every connection is valid)
 
     # output -> (seq_len, d_v)
+    assert mask.dtype == jnp.bool_
+
     d_k = K.shape[-1]
-    return softmax(Q @ K.T / jnp.sqrt(d_k)) @ V
+    mask = 0 if mask is None else mask * -jnp.inf
+    return softmax((Q @ K.T / jnp.sqrt(d_k)) + mask) @ V
 
 
-def multihead_attention(Q, K, V, WQ, WK, WV, WO):
+def multihead_attention(Q, K, V, WQ, WK, WV, WO, mask):
     # Q -> (seq_len, d_k)
     # K -> (seq_len, d_k)
     # V -> (seq_len, d_v)
+    # mask -> (seq_len, seq_len)
 
     # WQi -> (h, d_model, d_k)
     # WKi -> (h, d_model, d_k)
@@ -88,19 +113,25 @@ def multihead_attention(Q, K, V, WQ, WK, WV, WO):
     heads = []
     for i in range(h):
         heads.append(
-            scaled_dot_product_attention(Q=Q @ WQ[i], K=K @ WK[i], V=V @ WV[i])
+            scaled_dot_product_attention(
+                Q=Q @ WQ[i], K=K @ WK[i], V=V @ WV[i], mask=mask
+            )
         )
     return jnp.concatenate(heads) @ WO
 
 
-def encoder_layer(X, encoder_layer_weights):
+def encoder_layer(X, encoder_layer_weights, src_mask):
     # X -> (seq_len, d_model)
     # output -> (seq_len, d_model)
 
     # multihead attention
     prev = X
     out = multihead_attention(
-        X, X, X, **encoder_layer_weights["multihead_attention_weights"]
+        Q=X,
+        K=X,
+        V=X,
+        mask=src_mask,
+        **encoder_layer_weights["multihead_attention_weights"]
     )
     out = layer_norm(prev + out, **encoder_layer_weights["layer_norm1_params"])
 
@@ -112,23 +143,32 @@ def encoder_layer(X, encoder_layer_weights):
     return out
 
 
-def decoder_layer(X, Z, decoder_layer_weights):
+def decoder_layer(X, Z, decoder_layer_weights, trg_mask, src_mask):
     # X -> (seq_len, d_model)
     # Z -> (seq_len, d_model) which is the encoder outputs
+    # trg_mask -> (seq_len, seq_len) which is the mask for the first attn block
+    # src_mask -> (seq_len, seq_len) which is the mask for the second attn block
     # output -> (seq_len, d_model)
 
     # masked multihead attention
-    # TODO: figure out how masking is implemented (should be done at sdp atn layer)
     prev = X
     out = multihead_attention(
-        X, X, X, **decoder_layer_weights["masked_multihead_attention_weights"]
+        Q=X,
+        K=X,
+        V=X,
+        mask=trg_mask,
+        **decoder_layer_weights["masked_multihead_attention_weights"]
     )
     out = layer_norm(prev + out, **decoder_layer_weights["layer_norm1_params"])
 
     # multihead attention
     prev = out
     out = multihead_attention(
-        out, Z, Z, **decoder_layer_weights["multihead_attention_weights"]
+        Q=out,
+        K=Z,
+        V=Z,
+        mask=src_mask,
+        **decoder_layer_weights["multihead_attention_weights"]
     )
     out = layer_norm(prev + out, **decoder_layer_weights["layer_norm2_params"])
 

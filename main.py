@@ -208,9 +208,9 @@ def create_position_wise_ffn_weights(key, d_model, d_ff):
 
     return key, {
         "W1": xavier_init(W1_subkey, (d_model, d_ff)),
-        "b1": xavier_init(b1_subkey, (d_ff,)),
+        "b1": jnp.zeros((d_ff,)),
         "W2": xavier_init(W2_subkey, (d_ff, d_model)),
-        "b2": xavier_init(b2_subkey, (d_model,)),
+        "b2": jnp.zeros((d_model,)),
     }
 
 
@@ -219,7 +219,7 @@ def create_final_linear_layer_weights(key, d_model, n_out):
     key, b_subkey = key.split(key)
     return key, {
         "W": xavier_init(W_subkey, (d_model, n_out)),
-        "b": xavier_init(b_subkey, (n_out,)),
+        "b": jnp.zeros((n_out,)),
     }
 
 

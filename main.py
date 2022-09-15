@@ -21,6 +21,12 @@ def softmax(x):
     return jnp.exp(x) / jnp.sum(jnp.exp(x))
 
 
+def create_embedding_lookup_table(key, n, d):
+    # n -> number of embeddings to create
+    # d -> dimension of each embedding
+    return jax.random.normal(key, (n, d))
+
+
 def create_pad_mask(x, pad_idx):
     # x -> (seq_len)
     # output -> (seq_len, seq_len), positions that are True will be masked out
@@ -41,6 +47,10 @@ def create_mask(x, pad_idx):
 def layer_norm(x, gamma, beta, eps=1e-8):
     # https://pytorch.org/docs/stable/generated/torch.nn.LayerNorm.html
     return gamma * (x - jnp.mean(x)) / (jnp.std(x) + eps) + beta
+
+
+def embedding_lookup(token_indices, embedding_lookup_table):
+    return embedding_lookup_table[token_indices]
 
 
 def positional_embedding(pos, d_model, dtype=jnp.float32):

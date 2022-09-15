@@ -130,30 +130,44 @@ def multihead_attention(Q, K, V, WQ, WK, WV, WO, mask):
     return jnp.concatenate(heads) @ WO
 
 
-def encoder_layer(X, encoder_layer_weights, src_mask):
+def encoder_layer(
+    X,
+    src_mask,
+    multihead_attention_weights,
+    layer_norm1_params,
+    position_wise_ffn_weights,
+    layer_norm2_params,
+):
     # X -> (seq_len, d_model)
     # output -> (seq_len, d_model)
 
     # multihead attention
     prev = X
     out = multihead_attention(
-        Q=X,
-        K=X,
-        V=X,
-        mask=src_mask,
-        **encoder_layer_weights["multihead_attention_weights"]
+        Q=X, K=X, V=X, mask=src_mask, **multihead_attention_weights
     )
-    out = layer_norm(prev + out, **encoder_layer_weights["layer_norm1_params"])
+    out = layer_norm(prev + out, **layer_norm1_params)
 
     # position wise ffn
     prev = out
-    out = position_wise_ffn(out, **encoder_layer_weights["position_wise_ffn_weights"])
-    out = layer_norm(prev + out, **encoder_layer_weights["layer_norm2_params"])
+    out = position_wise_ffn(out, **position_wise_ffn_weights)
+    out = layer_norm(prev + out, **layer_norm2_params)
 
     return out
 
 
-def decoder_layer(X, Z, decoder_layer_weights, trg_mask, src_mask):
+def decoder_layer(
+    X,
+    Z,
+    trg_mask,
+    src_mask,
+    masked_multihead_attention_weights,
+    layer_norm1_params,
+    multihead_attention_weights,
+    layer_norm2_params,
+    position_wise_ffn_weights,
+    layer_norm3_params,
+):
     # X -> (seq_len, d_model)
     # Z -> (seq_len, d_model) which is the encoder outputs
     # trg_mask -> (seq_len, seq_len) which is the mask for the first attn block
@@ -163,29 +177,21 @@ def decoder_layer(X, Z, decoder_layer_weights, trg_mask, src_mask):
     # masked multihead attention
     prev = X
     out = multihead_attention(
-        Q=X,
-        K=X,
-        V=X,
-        mask=trg_mask,
-        **decoder_layer_weights["masked_multihead_attention_weights"]
+        Q=X, K=X, V=X, mask=trg_mask, **masked_multihead_attention_weights
     )
-    out = layer_norm(prev + out, **decoder_layer_weights["layer_norm1_params"])
+    out = layer_norm(prev + out, **layer_norm1_params)
 
     # multihead attention
     prev = out
     out = multihead_attention(
-        Q=out,
-        K=Z,
-        V=Z,
-        mask=src_mask,
-        **decoder_layer_weights["multihead_attention_weights"]
+        Q=out, K=Z, V=Z, mask=src_mask, **multihead_attention_weights
     )
-    out = layer_norm(prev + out, **decoder_layer_weights["layer_norm2_params"])
+    out = layer_norm(prev + out, **layer_norm2_params)
 
     # position wise ffn
     prev = out
-    out = position_wise_ffn(out, **decoder_layer_weights["position_wise_ffn_weights"])
-    out = layer_norm(prev + out, **decoder_layer_weights["layer_norm3_params"])
+    out = position_wise_ffn(out, **position_wise_ffn_weights)
+    out = layer_norm(prev + out, **layer_norm3_params)
 
     return out
 

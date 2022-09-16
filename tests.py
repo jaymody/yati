@@ -1,7 +1,11 @@
 import jax
 import jax.numpy as jnp
 
-from main import initialize_transformer_params
+from model import (
+    initialize_transformer_params,
+    transformer_forward_fn,
+    transformer_predict_fn,
+)
 
 
 def test_initialization_is_random():
@@ -56,5 +60,34 @@ def test_initialization_is_random():
     print(value_counts(test)[:20])
 
 
+def test_initialization_forward_fn_and_predict_fn():
+    params = initialize_transformer_params(
+        seed=123,
+        src_vocab_size=200,
+        trg_vocab_size=300,
+        d_model=512,
+        d_ff=2048,
+        h=8,
+        n_enc_layers=6,
+        n_dec_layers=6,
+    )
+
+    logits = transformer_forward_fn(
+        src_token_ids=jnp.array([11, 10, 90, 7, 101]),
+        trg_token_ids=jnp.array([254, 6, 10, 40, 105, 10, 43]),
+        **params,
+    )
+    print(logits.shape)
+
+    logits = transformer_predict_fn(
+        src_token_ids=jnp.array([11, 8, 90, 5, 101, 99]),
+        **params,
+        sos_idx=1,
+        max_sequence_length=10,
+    )
+    print(jnp.argmax(logits, axis=-1))
+
+
 if __name__ == "__main__":
     test_initialization_is_random()
+    test_initialization_forward_fn_and_predict_fn()

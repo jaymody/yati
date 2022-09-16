@@ -2,13 +2,9 @@ import jax
 import jax.numpy as jnp
 
 
-def xavier_init(key, shape, gain=1.0):
-    # https://pytorch.org/docs/stable/nn.init.html#torch.nn.init.xavier_uniform_
-    assert len(shape) == 2
-    a = gain * jnp.sqrt(6.0 / (shape[0] + shape[1]))
-    return a * jax.random.normal(key, shape)
-
-
+################################
+##### Activation Functions #####
+################################
 def relu(x):
     # x -> (d_model)
     # output -> (d_model)
@@ -21,31 +17,9 @@ def softmax(x):
     return jnp.exp(x) / jnp.sum(jnp.exp(x))
 
 
-def initialize_embedding_lookup_table(key, n, d):
-    # n -> number of embeddings to create
-    # d -> dimension of each embedding
-    return jax.random.normal(key, (n, d))
-
-
-def initialize_pad_mask(x, pad_idx):
-    # x -> (seq_len)
-    # output -> (seq_len, seq_len), positions that are True will be masked out
-    return (x == pad_idx).reshape(1, -1) | (x == pad_idx).reshape(-1, 1)
-
-
-def initialize_illegal_connections_mask(seq_len):
-    # output -> (seq_len, seq_len), positions that are True will be masked out
-    return ~jnp.tri(seq_len, seq_len, k=0, dtype=jnp.bool_)
-
-
-def initialize_mask(x, pad_idx):
-    # x -> (seq_len)
-    # output -> (seq_len, seq_len), positions that are True will be masked out
-    return initialize_pad_mask(x, pad_idx) | initialize_illegal_connections_mask(
-        x.shape[0]
-    )
-
-
+################################
+######### Basic Layers #########
+################################
 def layer_norm(x, gamma, beta, eps=1e-8):
     # https://pytorch.org/docs/stable/generated/torch.nn.LayerNorm.html
     return gamma * (x - jnp.mean(x)) / (jnp.std(x) + eps) + beta
@@ -132,70 +106,20 @@ def multihead_attention(Q, K, V, WQ, WK, WV, WO, mask):
     return jnp.concatenate(heads) @ WO
 
 
-def encoder_layer(
-    X,
-    src_mask,
-    multihead_attention_params,
-    layer_norm1_params,
-    position_wise_ffn_params,
-    layer_norm2_params,
-):
-    # X -> (seq_len, d_model)
-    # output -> (seq_len, d_model)
-
-    # multihead attention
-    prev = X
-    out = multihead_attention(
-        Q=X, K=X, V=X, mask=src_mask, **multihead_attention_params
-    )
-    out = layer_norm(prev + out, **layer_norm1_params)
-
-    # position wise ffn
-    prev = out
-    out = position_wise_ffn(out, **position_wise_ffn_params)
-    out = layer_norm(prev + out, **layer_norm2_params)
-
-    return out
+################################
+### Parameter Initialization ###
+################################
+def xavier_init(key, shape, gain=1.0):
+    # https://pytorch.org/docs/stable/nn.init.html#torch.nn.init.xavier_uniform_
+    assert len(shape) == 2
+    a = gain * jnp.sqrt(6.0 / (shape[0] + shape[1]))
+    return a * jax.random.normal(key, shape)
 
 
-def decoder_layer(
-    X,
-    Z,
-    trg_mask,
-    src_mask,
-    masked_multihead_attention_params,
-    layer_norm1_params,
-    multihead_attention_params,
-    layer_norm2_params,
-    position_wise_ffn_params,
-    layer_norm3_params,
-):
-    # X -> (seq_len, d_model)
-    # Z -> (seq_len, d_model) which is the encoder outputs
-    # trg_mask -> (seq_len, seq_len) which is the mask for the first attn block
-    # src_mask -> (seq_len, seq_len) which is the mask for the second attn block
-    # output -> (seq_len, d_model)
-
-    # masked multihead attention
-    prev = X
-    out = multihead_attention(
-        Q=X, K=X, V=X, mask=trg_mask, **masked_multihead_attention_params
-    )
-    out = layer_norm(prev + out, **layer_norm1_params)
-
-    # multihead attention
-    prev = out
-    out = multihead_attention(
-        Q=out, K=Z, V=Z, mask=src_mask, **multihead_attention_params
-    )
-    out = layer_norm(prev + out, **layer_norm2_params)
-
-    # position wise ffn
-    prev = out
-    out = position_wise_ffn(out, **position_wise_ffn_params)
-    out = layer_norm(prev + out, **layer_norm3_params)
-
-    return out
+def initialize_embedding_lookup_table(key, n, d):
+    # n -> number of embeddings to create
+    # d -> dimension of each embedding
+    return jax.random.normal(key, (n, d))
 
 
 def initialize_layer_norm_params():
@@ -299,3 +223,92 @@ def initialize_transformer_params(
         "decoder_stack": decoder_stack,
         "final_linear_layer_params": final_linear_layer_params,
     }
+
+
+################################
+#### Encoder/Decoder Layers ####
+################################
+def encoder_layer(
+    X,
+    src_mask,
+    multihead_attention_params,
+    layer_norm1_params,
+    position_wise_ffn_params,
+    layer_norm2_params,
+):
+    # X -> (seq_len, d_model)
+    # output -> (seq_len, d_model)
+
+    # multihead attention
+    prev = X
+    out = multihead_attention(
+        Q=X, K=X, V=X, mask=src_mask, **multihead_attention_params
+    )
+    out = layer_norm(prev + out, **layer_norm1_params)
+
+    # position wise ffn
+    prev = out
+    out = position_wise_ffn(out, **position_wise_ffn_params)
+    out = layer_norm(prev + out, **layer_norm2_params)
+
+    return out
+
+
+def decoder_layer(
+    X,
+    Z,
+    trg_mask,
+    src_mask,
+    masked_multihead_attention_params,
+    layer_norm1_params,
+    multihead_attention_params,
+    layer_norm2_params,
+    position_wise_ffn_params,
+    layer_norm3_params,
+):
+    # X -> (seq_len, d_model)
+    # Z -> (seq_len, d_model) which is the encoder outputs
+    # trg_mask -> (seq_len, seq_len) which is the mask for the first attn block
+    # src_mask -> (seq_len, seq_len) which is the mask for the second attn block
+    # output -> (seq_len, d_model)
+
+    # masked multihead attention
+    prev = X
+    out = multihead_attention(
+        Q=X, K=X, V=X, mask=trg_mask, **masked_multihead_attention_params
+    )
+    out = layer_norm(prev + out, **layer_norm1_params)
+
+    # multihead attention
+    prev = out
+    out = multihead_attention(
+        Q=out, K=Z, V=Z, mask=src_mask, **multihead_attention_params
+    )
+    out = layer_norm(prev + out, **layer_norm2_params)
+
+    # position wise ffn
+    prev = out
+    out = position_wise_ffn(out, **position_wise_ffn_params)
+    out = layer_norm(prev + out, **layer_norm3_params)
+
+    return out
+
+
+################################
+###### Masking Functions #######
+################################
+def create_pad_mask(x, pad_idx):
+    # x -> (seq_len)
+    # output -> (seq_len, seq_len), positions that are True will be masked out
+    return (x == pad_idx).reshape(1, -1) | (x == pad_idx).reshape(-1, 1)
+
+
+def create_illegal_connections_mask(seq_len):
+    # output -> (seq_len, seq_len), positions that are True will be masked out
+    return ~jnp.tri(seq_len, seq_len, k=0, dtype=jnp.bool_)
+
+
+def create_mask(x, pad_idx):
+    # x -> (seq_len)
+    # output -> (seq_len, seq_len), positions that are True will be masked out
+    return create_pad_mask(x, pad_idx) | create_illegal_connections_mask(x.shape[0])

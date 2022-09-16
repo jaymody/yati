@@ -135,9 +135,9 @@ def multihead_attention(Q, K, V, WQ, WK, WV, WO, mask):
 def encoder_layer(
     X,
     src_mask,
-    multihead_attention_weights,
+    multihead_attention_params,
     layer_norm1_params,
-    position_wise_ffn_weights,
+    position_wise_ffn_params,
     layer_norm2_params,
 ):
     # X -> (seq_len, d_model)
@@ -146,13 +146,13 @@ def encoder_layer(
     # multihead attention
     prev = X
     out = multihead_attention(
-        Q=X, K=X, V=X, mask=src_mask, **multihead_attention_weights
+        Q=X, K=X, V=X, mask=src_mask, **multihead_attention_params
     )
     out = layer_norm(prev + out, **layer_norm1_params)
 
     # position wise ffn
     prev = out
-    out = position_wise_ffn(out, **position_wise_ffn_weights)
+    out = position_wise_ffn(out, **position_wise_ffn_params)
     out = layer_norm(prev + out, **layer_norm2_params)
 
     return out
@@ -163,11 +163,11 @@ def decoder_layer(
     Z,
     trg_mask,
     src_mask,
-    masked_multihead_attention_weights,
+    masked_multihead_attention_params,
     layer_norm1_params,
-    multihead_attention_weights,
+    multihead_attention_params,
     layer_norm2_params,
-    position_wise_ffn_weights,
+    position_wise_ffn_params,
     layer_norm3_params,
 ):
     # X -> (seq_len, d_model)
@@ -179,20 +179,20 @@ def decoder_layer(
     # masked multihead attention
     prev = X
     out = multihead_attention(
-        Q=X, K=X, V=X, mask=trg_mask, **masked_multihead_attention_weights
+        Q=X, K=X, V=X, mask=trg_mask, **masked_multihead_attention_params
     )
     out = layer_norm(prev + out, **layer_norm1_params)
 
     # multihead attention
     prev = out
     out = multihead_attention(
-        Q=out, K=Z, V=Z, mask=src_mask, **multihead_attention_weights
+        Q=out, K=Z, V=Z, mask=src_mask, **multihead_attention_params
     )
     out = layer_norm(prev + out, **layer_norm2_params)
 
     # position wise ffn
     prev = out
-    out = position_wise_ffn(out, **position_wise_ffn_weights)
+    out = position_wise_ffn(out, **position_wise_ffn_params)
     out = layer_norm(prev + out, **layer_norm3_params)
 
     return out
@@ -202,7 +202,7 @@ def initialize_layer_norm_params():
     return {"gamma": jnp.array(1), "beta": jnp.array(0)}
 
 
-def initialize_position_wise_ffn_weights(key, d_model, d_ff):
+def initialize_position_wise_ffn_params(key, d_model, d_ff):
     W1_subkey, W2_subkey = jax.random.split(key)
 
     return {
@@ -213,14 +213,14 @@ def initialize_position_wise_ffn_weights(key, d_model, d_ff):
     }
 
 
-def initialize_final_linear_layer_weights(key, d_model, n_out):
+def initialize_final_linear_layer_params(key, d_model, n_out):
     return {
         "W": xavier_init(key, (d_model, n_out)),
         "b": jnp.zeros((n_out,)),
     }
 
 
-def initialize_mutlihead_attention_weights(key, d_model, d_k, d_v, h):
+def initialize_mutlihead_attention_params(key, d_model, d_k, d_v, h):
     key, *WQ_subkeys = jax.random.split(key, h + 1)
     key, *WK_subkeys = jax.random.split(key, h + 1)
     key, *WV_subkeys = jax.random.split(key, h + 1)
@@ -237,16 +237,16 @@ def initialize_mutlihead_attention_weights(key, d_model, d_k, d_v, h):
 def initialize_encoder_layer(key, d_model, d_k, d_v, d_ff, h):
     subkeys = jax.random.split(key, 2)
 
-    multihead_attention_weights = initialize_mutlihead_attention_weights(
+    multihead_attention_params = initialize_mutlihead_attention_params(
         subkeys[0], d_model, d_k, d_v, h
     )
-    position_wise_ffn_weights = initialize_position_wise_ffn_weights(
+    position_wise_ffn_params = initialize_position_wise_ffn_params(
         subkeys[1], d_model, d_ff
     )
     return {
-        "multihead_attention_weights": multihead_attention_weights,
+        "multihead_attention_params": multihead_attention_params,
         "layer_norm1_params": initialize_layer_norm_params(),
-        "position_wise_ffn_weights": position_wise_ffn_weights,
+        "position_wise_ffn_params": position_wise_ffn_params,
         "layer_norm2_params": initialize_layer_norm_params(),
     }
 
@@ -254,26 +254,26 @@ def initialize_encoder_layer(key, d_model, d_k, d_v, d_ff, h):
 def initialize_decoder_layer(key, d_model, d_k, d_v, d_ff, h):
     subkeys = jax.random.split(key, 3)
 
-    multihead_attention_weights = initialize_mutlihead_attention_weights(
+    multihead_attention_params = initialize_mutlihead_attention_params(
         subkeys[0], d_model, d_k, d_v, h
     )
-    masked_multihead_attention_weights = initialize_mutlihead_attention_weights(
+    masked_multihead_attention_params = initialize_mutlihead_attention_params(
         subkeys[1], d_model, d_k, d_v, h
     )
-    position_wise_ffn_weights = initialize_position_wise_ffn_weights(
+    position_wise_ffn_params = initialize_position_wise_ffn_params(
         subkeys[2], d_model, d_ff
     )
     return key, {
-        "masked_multihead_attention_weights": masked_multihead_attention_weights,
+        "masked_multihead_attention_params": masked_multihead_attention_params,
         "layer_norm1_params": initialize_layer_norm_params(),
-        "multihead_attention_weights": multihead_attention_weights,
+        "multihead_attention_params": multihead_attention_params,
         "layer_norm2_params": initialize_layer_norm_params(),
-        "position_wise_ffn_weights": position_wise_ffn_weights,
+        "position_wise_ffn_params": position_wise_ffn_params,
         "layer_norm3_params": initialize_layer_norm_params(),
     }
 
 
-def initialize_transformer_weights(
+def initialize_transformer_params(
     seed, d_model, d_k, d_v, d_ff, h, n_enc_layers, n_dec_layers, n_out
 ):
     key = jax.random.PRNGKey(seed)
@@ -291,11 +291,11 @@ def initialize_transformer_weights(
         for i in range(n_dec_layers)
     ]
 
-    final_linear_layer_weights = initialize_final_linear_layer_weights(
+    final_linear_layer_params = initialize_final_linear_layer_params(
         final_layer_key, d_model, n_out
     )
     return {
         "encoder_stack": encoder_stack,
         "decoder_stack": decoder_stack,
-        "final_linear_layer_weights": final_linear_layer_weights,
+        "final_linear_layer_params": final_linear_layer_params,
     }

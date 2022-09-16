@@ -293,8 +293,9 @@ def encoder_layer(
     out = layer_norm(prev + out, **layer_norm1_params)
 
     # position wise ffn
+    # TODO: probably use jax vmap for position_wise_ffn
     prev = out
-    out = position_wise_ffn(out, **position_wise_ffn_params)
+    out = jnp.stack([position_wise_ffn(o, **position_wise_ffn_params) for o in out])
     out = layer_norm(prev + out, **layer_norm2_params)
 
     return out
@@ -333,8 +334,9 @@ def decoder_layer(
     out = layer_norm(prev + out, **layer_norm2_params)
 
     # position wise ffn
+    # TODO: probably use jax vmap for position_wise_ffn
     prev = out
-    out = position_wise_ffn(out, **position_wise_ffn_params)
+    out = jnp.stack([position_wise_ffn(o, **position_wise_ffn_params) for o in out])
     out = layer_norm(prev + out, **layer_norm3_params)
 
     return out

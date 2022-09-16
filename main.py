@@ -21,27 +21,29 @@ def softmax(x):
     return jnp.exp(x) / jnp.sum(jnp.exp(x))
 
 
-def create_embedding_lookup_table(key, n, d):
+def initialize_embedding_lookup_table(key, n, d):
     # n -> number of embeddings to create
     # d -> dimension of each embedding
     return jax.random.normal(key, (n, d))
 
 
-def create_pad_mask(x, pad_idx):
+def initialize_pad_mask(x, pad_idx):
     # x -> (seq_len)
     # output -> (seq_len, seq_len), positions that are True will be masked out
     return (x == pad_idx).reshape(1, -1) | (x == pad_idx).reshape(-1, 1)
 
 
-def create_illegal_connections_mask(seq_len):
+def initialize_illegal_connections_mask(seq_len):
     # output -> (seq_len, seq_len), positions that are True will be masked out
     return ~jnp.tri(seq_len, seq_len, k=0, dtype=jnp.bool_)
 
 
-def create_mask(x, pad_idx):
+def initialize_mask(x, pad_idx):
     # x -> (seq_len)
     # output -> (seq_len, seq_len), positions that are True will be masked out
-    return create_pad_mask(x, pad_idx) | create_illegal_connections_mask(x.shape[0])
+    return initialize_pad_mask(x, pad_idx) | initialize_illegal_connections_mask(
+        x.shape[0]
+    )
 
 
 def layer_norm(x, gamma, beta, eps=1e-8):
@@ -196,11 +198,11 @@ def decoder_layer(
     return out
 
 
-def create_layer_norm_params():
+def initialize_layer_norm_params():
     return {"gamma": jnp.array(1), "beta": jnp.array(0)}
 
 
-def create_position_wise_ffn_weights(key, d_model, d_ff):
+def initialize_position_wise_ffn_weights(key, d_model, d_ff):
     W1_subkey, W2_subkey = jax.random.split(key)
 
     return {
@@ -211,14 +213,14 @@ def create_position_wise_ffn_weights(key, d_model, d_ff):
     }
 
 
-def create_final_linear_layer_weights(key, d_model, n_out):
+def initialize_final_linear_layer_weights(key, d_model, n_out):
     return {
         "W": xavier_init(key, (d_model, n_out)),
         "b": jnp.zeros((n_out,)),
     }
 
 
-def create_mutlihead_attention_weights(key, d_model, d_k, d_v, h):
+def initialize_mutlihead_attention_weights(key, d_model, d_k, d_v, h):
     key, *WQ_subkeys = jax.random.split(key, h + 1)
     key, *WK_subkeys = jax.random.split(key, h + 1)
     key, *WV_subkeys = jax.random.split(key, h + 1)
@@ -232,46 +234,46 @@ def create_mutlihead_attention_weights(key, d_model, d_k, d_v, h):
     }
 
 
-def create_encoder_layer(key, d_model, d_k, d_v, d_ff, h):
+def initialize_encoder_layer(key, d_model, d_k, d_v, d_ff, h):
     subkeys = jax.random.split(key, 2)
 
-    multihead_attention_weights = create_mutlihead_attention_weights(
+    multihead_attention_weights = initialize_mutlihead_attention_weights(
         subkeys[0], d_model, d_k, d_v, h
     )
-    position_wise_ffn_weights = create_position_wise_ffn_weights(
+    position_wise_ffn_weights = initialize_position_wise_ffn_weights(
         subkeys[1], d_model, d_ff
     )
     return {
         "multihead_attention_weights": multihead_attention_weights,
-        "layer_norm1_params": create_layer_norm_params(),
+        "layer_norm1_params": initialize_layer_norm_params(),
         "position_wise_ffn_weights": position_wise_ffn_weights,
-        "layer_norm2_params": create_layer_norm_params(),
+        "layer_norm2_params": initialize_layer_norm_params(),
     }
 
 
-def create_decoder_layer(key, d_model, d_k, d_v, d_ff, h):
+def initialize_decoder_layer(key, d_model, d_k, d_v, d_ff, h):
     subkeys = jax.random.split(key, 3)
 
-    multihead_attention_weights = create_mutlihead_attention_weights(
+    multihead_attention_weights = initialize_mutlihead_attention_weights(
         subkeys[0], d_model, d_k, d_v, h
     )
-    masked_multihead_attention_weights = create_mutlihead_attention_weights(
+    masked_multihead_attention_weights = initialize_mutlihead_attention_weights(
         subkeys[1], d_model, d_k, d_v, h
     )
-    position_wise_ffn_weights = create_position_wise_ffn_weights(
+    position_wise_ffn_weights = initialize_position_wise_ffn_weights(
         subkeys[2], d_model, d_ff
     )
     return key, {
         "masked_multihead_attention_weights": masked_multihead_attention_weights,
-        "layer_norm1_params": create_layer_norm_params(),
+        "layer_norm1_params": initialize_layer_norm_params(),
         "multihead_attention_weights": multihead_attention_weights,
-        "layer_norm2_params": create_layer_norm_params(),
+        "layer_norm2_params": initialize_layer_norm_params(),
         "position_wise_ffn_weights": position_wise_ffn_weights,
-        "layer_norm3_params": create_layer_norm_params(),
+        "layer_norm3_params": initialize_layer_norm_params(),
     }
 
 
-def create_transformer_weights(
+def initialize_transformer_weights(
     seed, d_model, d_k, d_v, d_ff, h, n_enc_layers, n_dec_layers, n_out
 ):
     key = jax.random.PRNGKey(seed)
@@ -280,16 +282,16 @@ def create_transformer_weights(
     final_layer_key = key
 
     encoder_stack = [
-        create_encoder_layer(enc_keys[i], d_model, d_k, d_v, d_ff, h)
+        initialize_encoder_layer(enc_keys[i], d_model, d_k, d_v, d_ff, h)
         for i in range(n_enc_layers)
     ]
 
     decoder_stack = [
-        create_decoder_layer(dec_keys[i], d_model, d_k, d_v, d_ff, h)
+        initialize_decoder_layer(dec_keys[i], d_model, d_k, d_v, d_ff, h)
         for i in range(n_dec_layers)
     ]
 
-    final_linear_layer_weights = create_final_linear_layer_weights(
+    final_linear_layer_weights = initialize_final_linear_layer_weights(
         final_layer_key, d_model, n_out
     )
     return {

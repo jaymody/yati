@@ -1,7 +1,7 @@
 import jax
 import jax.numpy as jnp
 
-from main import create_transformer_weights
+from main import initialize_transformer_weights
 
 
 def test_initialization_is_random():
@@ -35,7 +35,7 @@ def test_initialization_is_random():
         return b[b[:, 1].argsort()][::-1]
 
     _seed = 111
-    weights = create_transformer_weights(
+    weights = initialize_transformer_weights(
         _seed, 512 // 128, 512 // 128, 512 // 128, 2048 // 128, 2, 2, 2, 10
     )
     weights_flattened = jnp.array(flatten_and_concat(weights))

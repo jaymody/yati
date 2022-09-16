@@ -365,5 +365,123 @@ def create_mask(x, pad_idx):
 ################################
 ######### Transformer ##########
 ################################
-def transformer_forward_pass():
-    pass
+def encoder(src_token_ids, src_embeddings_table, encoder_stack):
+    # (src_seq_len, src_seq_len)
+    # TODO: pad masking
+    src_mask = None
+
+    # (src_seq_len) -> (src_seq_len, d_model)
+    src_embeddings = embedding_lookup(src_token_ids, src_embeddings_table)
+
+    # (src_seq_len, d_model) -> (src_seq_len, d_model)
+    src_embeddings += create_positional_embeddings(src_embeddings)
+
+    Z = src_embeddings
+    for encoder_layer_params in encoder_stack:
+        # (src_seq_len, d_model) -> (src_seq_len, d_model)
+        Z = encoder_layer(Z, src_mask=src_mask, **encoder_layer_params)
+
+    # (src_seq_len, d_model)
+    return Z
+
+
+def decoder(
+    trg_token_ids, Z, trg_embeddings_table, decoder_stack, final_linear_layer_params
+):
+    # (src_seq_len, src_seq_len)
+    # TODO: pad masking, also maybe this should only be done once between enc and dec?
+    src_mask = None
+
+    # (trg_seq_len, trg_seq_len)
+    trg_mask = create_illegal_connections_mask(seq_len=trg_token_ids.shape[0])
+
+    # (trg_seq_len) -> (trg_seq_len, d_model)
+    trg_embeddings = embedding_lookup(trg_token_ids, trg_embeddings_table)
+
+    # (src_seq_len, d_model) -> (src_seq_len, d_model)
+    trg_embeddings += create_positional_embeddings(trg_embeddings)
+
+    X = trg_embeddings
+    for decoder_layer_params in decoder_stack:
+        # (trg_seq_len, d_model) -> (trg_seq_len, d_model)
+        X = decoder_layer(
+            X, Z=Z, trg_mask=trg_mask, src_mask=src_mask, **decoder_layer_params
+        )
+
+    # (trg_seq_len, d_model) -> (trg_seq_len, trg_vocab_size)
+    next_token_probabilities = jnp.stack(
+        [final_linear_layer(x, **final_linear_layer_params) for x in X]
+    )
+
+    # (trg_seq_len, trg_vocab_size)
+    return next_token_probabilities
+
+
+def transformer_forward_fn(
+    src_token_ids,
+    trg_token_ids,
+    src_embeddings_table,
+    trg_embeddings_table,
+    encoder_stack,
+    decoder_stack,
+    final_linear_layer_params,
+):
+    Z = encoder(
+        src_token_ids,
+        src_embeddings_table,
+        encoder_stack,
+    )
+    next_token_probabilities = decoder(
+        trg_token_ids,
+        Z,
+        trg_embeddings_table,
+        decoder_stack,
+        final_linear_layer_params,
+    )
+    return next_token_probabilities
+
+
+def transformer_predict_fn(
+    src_token_ids,
+    src_embeddings_table,
+    trg_embeddings_table,
+    encoder_stack,
+    decoder_stack,
+    final_linear_layer_params,
+    sos_idx,
+    max_sequence_length,
+):
+    # encoder forward pass
+    Z = encoder(src_token_ids, src_embeddings_table, encoder_stack)
+
+    # iterative decode
+    # start with just [sos_idx] as the decoder input, each step add the token with the
+    # highest predicted next token probability to the decoder input and repeat until a
+    # sequence of length max_sequence_length is constructed
+    trg_token_ids = jnp.array([sos_idx])
+    logits = jnp.array([])
+    for _ in range(max_sequence_length):
+        # decoder forward pass
+        probabilities = decoder(
+            trg_token_ids,
+            Z,
+            trg_embeddings_table,
+            decoder_stack,
+            final_linear_layer_params,
+        )
+
+        # next_token_probability_distribution[i] = probability the next token is i
+        next_token_probability_distribution = probabilities[-1]
+
+        # token idx of the token that has the highest probability of being next
+        predicted_next_token_idx = jnp.argmax(next_token_probability_distribution)
+
+        # append probability dist to logits so we can return it to the caller
+        logits = jnp.append(logits, next_token_probability_distribution)
+
+        # append the predict next token to the decoder input for the next iteration
+        trg_token_ids = jnp.concatenate(
+            [trg_token_ids, jnp.array([predicted_next_token_idx])]
+        )
+
+    return logits

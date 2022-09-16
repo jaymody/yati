@@ -6,8 +6,8 @@ import jax.numpy as jnp
 ##### Activation Functions #####
 ################################
 def relu(x):
-    # x -> (d_model)
-    # output -> (d_model)
+    # x -> any shape
+    # output -> same shape as x
     return jnp.max(0, x)
 
 
@@ -20,16 +20,24 @@ def softmax(x):
 ################################
 ######### Basic Layers #########
 ################################
-def layer_norm(x, gamma, beta, eps=1e-8):
+def layer_norm(x, gamma: int, beta: int, eps: float = 1e-8):
+    # x -> any shapes
+    # output -> shape shape as x
     # https://pytorch.org/docs/stable/generated/torch.nn.LayerNorm.html
     return gamma * (x - jnp.mean(x)) / (jnp.std(x) + eps) + beta
 
 
 def embedding_lookup(token_indices, embedding_lookup_table):
+    # token_indices -> (seq_len) of type int
+    # embedding_lookup_table -> (vocab_size, d_model)
     return embedding_lookup_table[token_indices]
 
 
-def positional_embedding(pos, d_model, dtype=jnp.float32):
+def positional_embedding(pos: int, d_model: int, dtype=jnp.float32):
+    # pos -> the position of the given embedding (token) in the sequence from 0 to seq_len - 1
+    # d_model -> the size of the embedding
+    # output -> (d_model)
+
     # TODO: do we start indexing at 0 or 1, I'm assuming it's implied as 1 by the paper
     # since we are using mathematical notation (not that it will make a difference
     # anyways, but it does change the result of the equation slightly)
@@ -63,15 +71,15 @@ def final_linear_layer(x, W1, b1):
 
 
 def scaled_dot_product_attention(Q, K, V, mask=None):
-    # Q -> (seq_len, d_k)
-    # K -> (seq_len, d_k)
-    # V -> (seq_len, d_v)
-    # mask -> (seq_len, seq_len)
+    # Q -> (in_seq_len, d_k)
+    # K -> (out_seq_len, d_k)
+    # V -> (out_seq_len, d_v)
+    # mask -> (in_seq_len, out_seq_len)
     #   mask[i][j] = True means mask this connection (illegal connection)
     #   mask[i][j] = False means don't mask this connection (valid connection)
     #   mask = None means no masking (in other words, every connection is valid)
 
-    # output -> (seq_len, d_v)
+    # output -> (out_seq_len, d_v)
     assert mask.dtype == jnp.bool_
 
     d_k = K.shape[-1]
@@ -80,10 +88,10 @@ def scaled_dot_product_attention(Q, K, V, mask=None):
 
 
 def multihead_attention(Q, K, V, WQ, WK, WV, WO, mask):
-    # Q -> (seq_len, d_k)
-    # K -> (seq_len, d_k)
-    # V -> (seq_len, d_v)
-    # mask -> (seq_len, seq_len)
+    # Q -> (in_seq_len, d_k)
+    # K -> (out_seq_len, d_k)
+    # V -> (out_seq_len, d_v)
+    # mask -> (in_seq_len, out_seq_len)
 
     # WQi -> (h, d_model, d_k)
     # WKi -> (h, d_model, d_k)
@@ -91,7 +99,7 @@ def multihead_attention(Q, K, V, WQ, WK, WV, WO, mask):
     # WO  -> (h * d_v, d_model)
 
     # h = number of attentions heads
-    # output -> (seq_len, d_model)
+    # output -> (out_seq_len, d_model)
 
     # TODO: don't use a for loop here, you can probably implement this via vectorized
     # functions
@@ -109,14 +117,14 @@ def multihead_attention(Q, K, V, WQ, WK, WV, WO, mask):
 ################################
 ### Parameter Initialization ###
 ################################
-def xavier_init(key, shape, gain=1.0):
+def xavier_init(key, shape, gain: float = 1.0):
     # https://pytorch.org/docs/stable/nn.init.html#torch.nn.init.xavier_uniform_
     assert len(shape) == 2
     a = gain * jnp.sqrt(6.0 / (shape[0] + shape[1]))
     return a * jax.random.normal(key, shape)
 
 
-def initialize_embedding_lookup_table(key, n, d):
+def initialize_embedding_lookup_table(key, n: int, d: int):
     # n -> number of embeddings to create
     # d -> dimension of each embedding
     return jax.random.normal(key, (n, d))
@@ -126,7 +134,7 @@ def initialize_layer_norm_params():
     return {"gamma": jnp.array(1), "beta": jnp.array(0)}
 
 
-def initialize_position_wise_ffn_params(key, d_model, d_ff):
+def initialize_position_wise_ffn_params(key, d_model: int, d_ff: int):
     W1_subkey, W2_subkey = jax.random.split(key)
 
     return {
@@ -137,14 +145,16 @@ def initialize_position_wise_ffn_params(key, d_model, d_ff):
     }
 
 
-def initialize_final_linear_layer_params(key, d_model, n_out):
+def initialize_final_linear_layer_params(key, d_model: int, output_vocab_size: int):
     return {
-        "W": xavier_init(key, (d_model, n_out)),
-        "b": jnp.zeros((n_out,)),
+        "W": xavier_init(key, (d_model, output_vocab_size)),
+        "b": jnp.zeros((output_vocab_size,)),
     }
 
 
-def initialize_mutlihead_attention_params(key, d_model, d_k, d_v, h):
+def initialize_mutlihead_attention_params(
+    key, d_model: int, d_k: int, d_v: int, h: int
+):
     key, *WQ_subkeys = jax.random.split(key, h + 1)
     key, *WK_subkeys = jax.random.split(key, h + 1)
     key, *WV_subkeys = jax.random.split(key, h + 1)
@@ -158,11 +168,11 @@ def initialize_mutlihead_attention_params(key, d_model, d_k, d_v, h):
     }
 
 
-def initialize_encoder_layer(key, d_model, d_k, d_v, d_ff, h):
+def initialize_encoder_layer(key, d_model, d_ff, h):
     subkeys = jax.random.split(key, 2)
 
     multihead_attention_params = initialize_mutlihead_attention_params(
-        subkeys[0], d_model, d_k, d_v, h
+        subkeys[0], d_model=d_model, d_k=d_model, d_v=d_model, h=h
     )
     position_wise_ffn_params = initialize_position_wise_ffn_params(
         subkeys[1], d_model, d_ff
@@ -175,14 +185,14 @@ def initialize_encoder_layer(key, d_model, d_k, d_v, d_ff, h):
     }
 
 
-def initialize_decoder_layer(key, d_model, d_k, d_v, d_ff, h):
+def initialize_decoder_layer(key, d_model, d_ff, h):
     subkeys = jax.random.split(key, 3)
 
     multihead_attention_params = initialize_mutlihead_attention_params(
-        subkeys[0], d_model, d_k, d_v, h
+        subkeys[0], d_model=d_model, d_k=d_model, d_v=d_model, h=h
     )
     masked_multihead_attention_params = initialize_mutlihead_attention_params(
-        subkeys[1], d_model, d_k, d_v, h
+        subkeys[1], d_model=d_model, d_k=d_model, d_v=d_model, h=h
     )
     position_wise_ffn_params = initialize_position_wise_ffn_params(
         subkeys[2], d_model, d_ff
@@ -198,7 +208,7 @@ def initialize_decoder_layer(key, d_model, d_k, d_v, d_ff, h):
 
 
 def initialize_transformer_params(
-    seed, d_model, d_k, d_v, d_ff, h, n_enc_layers, n_dec_layers, n_out
+    seed, d_model, d_ff, h, n_enc_layers, n_dec_layers, output_vocab_size
 ):
     key = jax.random.PRNGKey(seed)
     key, *enc_keys = jax.random.split(key, n_enc_layers + 1)
@@ -206,17 +216,17 @@ def initialize_transformer_params(
     final_layer_key = key
 
     encoder_stack = [
-        initialize_encoder_layer(enc_keys[i], d_model, d_k, d_v, d_ff, h)
+        initialize_encoder_layer(enc_keys[i], d_model, d_ff, h)
         for i in range(n_enc_layers)
     ]
 
     decoder_stack = [
-        initialize_decoder_layer(dec_keys[i], d_model, d_k, d_v, d_ff, h)
+        initialize_decoder_layer(dec_keys[i], d_model, d_ff, h)
         for i in range(n_dec_layers)
     ]
 
     final_linear_layer_params = initialize_final_linear_layer_params(
-        final_layer_key, d_model, n_out
+        final_layer_key, d_model, output_vocab_size
     )
     return {
         "encoder_stack": encoder_stack,
@@ -312,3 +322,10 @@ def create_mask(x, pad_idx):
     # x -> (seq_len)
     # output -> (seq_len, seq_len), positions that are True will be masked out
     return create_pad_mask(x, pad_idx) | create_illegal_connections_mask(x.shape[0])
+
+
+################################
+######### Transformer ##########
+################################
+def transformer_forward_pass():
+    pass

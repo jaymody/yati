@@ -188,10 +188,16 @@ def initialize_encoder_layer(key, d_model, d_ff, h):
     subkeys = jax.random.split(key, 2)
 
     multihead_attention_params = initialize_mutlihead_attention_params(
-        subkeys[0], d_model=d_model, d_k=d_model, d_v=d_model, h=h
+        subkeys[0],
+        d_model=d_model,
+        d_k=d_model // h,
+        d_v=d_model // h,
+        h=h,
     )
     position_wise_ffn_params = initialize_position_wise_ffn_params(
-        subkeys[1], d_model, d_ff
+        subkeys[1],
+        d_model,
+        d_ff,
     )
     return {
         "multihead_attention_params": multihead_attention_params,
@@ -205,13 +211,23 @@ def initialize_decoder_layer(key, d_model, d_ff, h):
     subkeys = jax.random.split(key, 3)
 
     multihead_attention_params = initialize_mutlihead_attention_params(
-        subkeys[0], d_model=d_model, d_k=d_model, d_v=d_model, h=h
+        subkeys[0],
+        d_model=d_model,
+        d_k=d_model // h,
+        d_v=d_model // h,
+        h=h,
     )
     masked_multihead_attention_params = initialize_mutlihead_attention_params(
-        subkeys[1], d_model=d_model, d_k=d_model, d_v=d_model, h=h
+        subkeys[1],
+        d_model=d_model,
+        d_k=d_model // h,
+        d_v=d_model // h,
+        h=h,
     )
     position_wise_ffn_params = initialize_position_wise_ffn_params(
-        subkeys[2], d_model, d_ff
+        subkeys[2],
+        d_model,
+        d_ff,
     )
     return key, {
         "masked_multihead_attention_params": masked_multihead_attention_params,

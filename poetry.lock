@@ -142,6 +142,7 @@ python-versions = ">=3.7"
 [package.dependencies]
 absl-py = "*"
 etils = {version = "*", extras = ["epath"]}
+jaxlib = {version = "0.3.15", optional = true, markers = "extra == \"cpu\""}
 numpy = ">=1.20"
 opt_einsum = "*"
 scipy = ">=1.5"
@@ -156,6 +157,19 @@ cuda11_cudnn805 = ["jaxlib (==0.3.15+cuda11.cudnn805)"]
 cuda11_cudnn82 = ["jaxlib (==0.3.15+cuda11.cudnn82)"]
 minimum-jaxlib = ["jaxlib (==0.3.14)"]
 tpu = ["jaxlib (==0.3.15)", "libtpu-nightly (==0.1.dev20220723)", "requests"]
+
+[[package]]
+name = "jaxlib"
+version = "0.3.15"
+description = "XLA library for JAX"
+category = "main"
+optional = false
+python-versions = ">=3.7"
+
+[package.dependencies]
+absl-py = "*"
+numpy = ">=1.19"
+scipy = ">=1.5"
 
 [[package]]
 name = "lazy-object-proxy"
@@ -305,7 +319,7 @@ testing = ["func-timeout", "jaraco.itertools", "pytest (>=6)", "pytest-black (>=
 [metadata]
 lock-version = "1.1"
 python-versions = "^3.9"
-content-hash = "316c556a1f55ca610cba62accff1f8f485e2b5ebdab813ae941192602cffe59b"
+content-hash = "13d453fbd28c3ca7dadfba7cd9d045f83fbc1336e8a919cc948256947075ca4f"
 
 [metadata.files]
 absl-py = [
@@ -367,6 +381,19 @@ isort = [
 ]
 jax = [
     {file = "jax-0.3.17.tar.gz", hash = "sha256:2a2794e4e0c93595a1b1d625026580c0686be93bd60d4f6906b090446692cadc"},
+]
+jaxlib = [
+    {file = "jaxlib-0.3.15-cp310-none-macosx_10_14_x86_64.whl", hash = "sha256:7555be95d567572579a2010ed03506e31ff87d55c21c1bc80eddcccd87b3f723"},
+    {file = "jaxlib-0.3.15-cp310-none-macosx_11_0_arm64.whl", hash = "sha256:89f5e27c59f8f5c2e5f3ad377ace2bc03e68728ff27aaf9e82e59d2a1a4c3c6d"},
+    {file = "jaxlib-0.3.15-cp310-none-manylinux2014_x86_64.whl", hash = "sha256:3af8343024ec44488bb542e62c7a61488df558e6da4bf072ebbdac319362a03f"},
+    {file = "jaxlib-0.3.15-cp37-none-macosx_10_14_x86_64.whl", hash = "sha256:8f999a69fda69976bdcfa45abcc99614160035ee878a544e713affd45cd5b4d1"},
+    {file = "jaxlib-0.3.15-cp37-none-manylinux2014_x86_64.whl", hash = "sha256:36570c1699b5bb4038f1f708d976afefff9fb745cc131c0c8c9340a072b38244"},
+    {file = "jaxlib-0.3.15-cp38-none-macosx_10_14_x86_64.whl", hash = "sha256:19038f91f49f44df1a9d2c00e11f7f61e922e4651c10cd928ac3dcb745234dbf"},
+    {file = "jaxlib-0.3.15-cp38-none-macosx_11_0_arm64.whl", hash = "sha256:30385dafe8299c60da1e1f6f3e0d095cfd2aeefc398c67501a772c8238fc57cd"},
+    {file = "jaxlib-0.3.15-cp38-none-manylinux2014_x86_64.whl", hash = "sha256:a97e80d533d1c66fe0c963e6a25cf85e00732710b6e17af568b1f4f026b52919"},
+    {file = "jaxlib-0.3.15-cp39-none-macosx_10_14_x86_64.whl", hash = "sha256:e8d63b156cbac46a15c2024f63761b0bc1f73df94d6a97fb641326c74aeab6ef"},
+    {file = "jaxlib-0.3.15-cp39-none-macosx_11_0_arm64.whl", hash = "sha256:c290ca60b1c08d0ac991be922146775a80943e7a970cde3fc42d6667ca0c115d"},
+    {file = "jaxlib-0.3.15-cp39-none-manylinux2014_x86_64.whl", hash = "sha256:ef58c67341c87789417891f7bd832fc84e23044ef6b085fb9c8306c60ec43bda"},
 ]
 lazy-object-proxy = [
     {file = "lazy-object-proxy-1.7.1.tar.gz", hash = "sha256:d609c75b986def706743cdebe5e47553f4a5a1da9c5ff66d76013ef396b5a8a4"},
@@ -443,6 +470,7 @@ numpy = [
     {file = "numpy-1.23.3-pp38-pypy38_pp73-macosx_10_9_x86_64.whl", hash = "sha256:17c0e467ade9bda685d5ac7f5fa729d8d3e76b23195471adae2d6a6941bd2c18"},
     {file = "numpy-1.23.3-pp38-pypy38_pp73-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:91b8d6768a75247026e951dce3b2aac79dc7e78622fc148329135ba189813584"},
     {file = "numpy-1.23.3-pp38-pypy38_pp73-win_amd64.whl", hash = "sha256:94c15ca4e52671a59219146ff584488907b1f9b3fc232622b47e2cf832e94fb8"},
+    {file = "numpy-1.23.3.tar.gz", hash = "sha256:51bf49c0cd1d52be0a240aa66f3458afc4b95d8993d2d04f0d91fa60c10af6cd"},
 ]
 opt-einsum = [
     {file = "opt_einsum-3.3.0-py3-none-any.whl", hash = "sha256:2455e59e3947d3c275477df7f5205b30635e266fe6dc300e3d9f9646bfcea147"},

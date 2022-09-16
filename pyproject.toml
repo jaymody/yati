@@ -8,7 +8,7 @@ packages = [{include = "yati"}]
 
 [tool.poetry.dependencies]
 python = "^3.9"
-jax = "^0.3.17"
+jax = {extras = ["cpu"], version = "^0.3.17"}
 
 
 [tool.poetry.group.dev.dependencies]

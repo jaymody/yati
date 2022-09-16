@@ -219,9 +219,9 @@ def create_final_linear_layer_weights(key, d_model, n_out):
 
 
 def create_mutlihead_attention_weights(key, d_model, d_k, d_v, h):
-    key, *WQ_subkeys = jax.random.split(key, h)
-    key, *WK_subkeys = jax.random.split(key, h)
-    key, *WV_subkeys = jax.random.split(key, h)
+    key, *WQ_subkeys = jax.random.split(key, h + 1)
+    key, *WK_subkeys = jax.random.split(key, h + 1)
+    key, *WV_subkeys = jax.random.split(key, h + 1)
     WO_subkey = key
 
     return {

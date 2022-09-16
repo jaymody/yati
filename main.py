@@ -161,10 +161,10 @@ def initialize_position_wise_ffn_params(key, d_model: int, d_ff: int):
     }
 
 
-def initialize_final_linear_layer_params(key, d_model: int, output_vocab_size: int):
+def initialize_final_linear_layer_params(key, d_model: int, trg_vocab_size: int):
     return {
-        "W": xavier_init(key, (d_model, output_vocab_size)),
-        "b": jnp.zeros((output_vocab_size,)),
+        "W": xavier_init(key, (d_model, trg_vocab_size)),
+        "b": jnp.zeros((trg_vocab_size,)),
     }
 
 
@@ -225,8 +225,8 @@ def initialize_decoder_layer(key, d_model, d_ff, h):
 
 def initialize_transformer_params(
     seed,
-    input_vocab_size,
-    output_vocab_size,
+    src_vocab_size,
+    trg_vocab_size,
     d_model,
     d_ff,
     h,
@@ -234,19 +234,19 @@ def initialize_transformer_params(
     n_dec_layers,
 ):
     key = jax.random.PRNGKey(seed)
-    key, input_embedding_key = jax.random.split(key)
-    key, output_embedding_key = jax.random.split(key)
+    key, src_embedding_key = jax.random.split(key)
+    key, trg_embedding_key = jax.random.split(key)
     key = jax.random.PRNGKey(seed)
     key, *enc_keys = jax.random.split(key, n_enc_layers + 1)
     key, *dec_keys = jax.random.split(key, n_dec_layers + 1)
     final_layer_key = key
 
-    input_embeddings_table = initialize_embedding_lookup_table(
-        input_embedding_key, input_vocab_size, d_model
+    src_embeddings_table = initialize_embedding_lookup_table(
+        src_embedding_key, src_vocab_size, d_model
     )
 
-    output_embeddings_table = initialize_embedding_lookup_table(
-        output_embedding_key, output_vocab_size, d_model
+    trg_embeddings_table = initialize_embedding_lookup_table(
+        trg_embedding_key, trg_vocab_size, d_model
     )
 
     encoder_stack = [
@@ -260,11 +260,11 @@ def initialize_transformer_params(
     ]
 
     final_linear_layer_params = initialize_final_linear_layer_params(
-        final_layer_key, d_model, output_vocab_size
+        final_layer_key, d_model, trg_vocab_size
     )
     return {
-        "input_embeddings_table": input_embeddings_table,
-        "output_embeddings_table": output_embeddings_table,
+        "src_embeddings_table": src_embeddings_table,
+        "trg_embeddings_table": trg_embeddings_table,
         "encoder_stack": encoder_stack,
         "decoder_stack": decoder_stack,
         "final_linear_layer_params": final_linear_layer_params,

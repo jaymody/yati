@@ -18,21 +18,8 @@ def softmax(x):
 
 
 ################################
-######### Basic Layers #########
+#### Positional Embeddings #####
 ################################
-def layer_norm(x, gamma: int, beta: int, eps: float = 1e-8):
-    # x -> any shapes
-    # output -> shape shape as x
-    # https://pytorch.org/docs/stable/generated/torch.nn.LayerNorm.html
-    return gamma * (x - jnp.mean(x)) / (jnp.std(x) + eps) + beta
-
-
-def embedding_lookup(token_indices, embedding_lookup_table):
-    # token_indices -> (seq_len) of type int
-    # embedding_lookup_table -> (vocab_size, d_model)
-    return embedding_lookup_table[token_indices]
-
-
 def create_positional_embedding(learned_embedding, pos: int):
     # learned_embedding -> (d_model)
     # pos -> the position of the given embedding (token) in the sequence from 0 to seq_len - 1
@@ -66,6 +53,22 @@ def create_positional_embeddings(learned_embeddings):
         ]
     )
     return positional_embeddings
+
+
+################################
+######### Basic Layers #########
+################################
+def layer_norm(x, gamma: int, beta: int, eps: float = 1e-8):
+    # x -> any shapes
+    # output -> shape shape as x
+    # https://pytorch.org/docs/stable/generated/torch.nn.LayerNorm.html
+    return gamma * (x - jnp.mean(x)) / (jnp.std(x) + eps) + beta
+
+
+def embedding_lookup(token_indices, embedding_lookup_table):
+    # token_indices -> (seq_len) of type int
+    # embedding_lookup_table -> (vocab_size, d_model)
+    return embedding_lookup_table[token_indices]
 
 
 def position_wise_ffn(x, W1, b1, W2, b2):

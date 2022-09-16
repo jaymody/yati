@@ -33,26 +33,39 @@ def embedding_lookup(token_indices, embedding_lookup_table):
     return embedding_lookup_table[token_indices]
 
 
-def positional_embedding(pos: int, d_model: int, dtype=jnp.float32):
+def create_positional_embedding(learned_embedding, pos: int):
+    # learned_embedding -> (d_model)
     # pos -> the position of the given embedding (token) in the sequence from 0 to seq_len - 1
-    # d_model -> the size of the embedding
     # output -> (d_model)
 
     # TODO: do we start indexing at 0 or 1, I'm assuming it's implied as 1 by the paper
     # since we are using mathematical notation (not that it will make a difference
     # anyways, but it does change the result of the equation slightly)
+    d_model = learned_embedding.shape[0]
+
     odd_indices = jnp.arange(2, d_model + 1, 2)
     even_indices = jnp.arange(1, d_model + 1, 2)
 
-    embedding = jnp.empty((d_model,), dtype=dtype)
-    embedding = embedding.at[odd_indices - 1].set(
+    positional_embedding = jnp.empty_like(learned_embedding)
+    positional_embedding = positional_embedding.at[odd_indices - 1].set(
         jnp.cos(pos / jnp.power(10000, 2 * odd_indices / d_model))
     )
-    embedding = embedding.at[even_indices - 1].set(
+    positional_embedding = positional_embedding.at[even_indices - 1].set(
         jnp.sin(pos / jnp.power(10000, 2 * even_indices / d_model))
     )
 
-    return embedding
+    return positional_embedding
+
+
+def create_positional_embeddings(learned_embeddings):
+    # learned_embeddings -> (seq_len, d_model)
+    positional_embeddings = jnp.stack(
+        [
+            create_positional_embedding(learned_embedding, pos)
+            for pos, learned_embedding in enumerate(learned_embeddings)
+        ]
+    )
+    return positional_embeddings
 
 
 def position_wise_ffn(x, W1, b1, W2, b2):

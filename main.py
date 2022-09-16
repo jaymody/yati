@@ -8,7 +8,7 @@ import jax.numpy as jnp
 def relu(x):
     # x -> any shape
     # output -> same shape as x
-    return jnp.max(0, x)
+    return jnp.maximum(0, x)
 
 
 def softmax(x):
@@ -82,8 +82,8 @@ def position_wise_ffn(x, W1, b1, W2, b2):
     return relu(x @ W1 + b1) @ W2 + b2
 
 
-def final_linear_layer(x, W1, b1):
-    return softmax(x @ W1 + b1)
+def final_linear_layer(x, W, b):
+    return softmax(x @ W + b)
 
 
 def scaled_dot_product_attention(Q, K, V, mask=None):
@@ -96,7 +96,7 @@ def scaled_dot_product_attention(Q, K, V, mask=None):
     #   mask = None means no masking (in other words, every connection is valid)
 
     # output -> (out_seq_len, d_v)
-    assert mask.dtype == jnp.bool_
+    assert mask is None or mask.dtype == jnp.bool_
 
     d_k = K.shape[-1]
     mask = 0 if mask is None else mask * -jnp.inf
@@ -127,7 +127,7 @@ def multihead_attention(Q, K, V, WQ, WK, WV, WO, mask):
                 Q=Q @ WQ[i], K=K @ WK[i], V=V @ WV[i], mask=mask
             )
         )
-    return jnp.concatenate(heads) @ WO
+    return jnp.hstack(heads) @ WO
 
 
 ################################
@@ -229,7 +229,7 @@ def initialize_decoder_layer(key, d_model, d_ff, h):
         d_model,
         d_ff,
     )
-    return key, {
+    return {
         "masked_multihead_attention_params": masked_multihead_attention_params,
         "layer_norm1_params": initialize_layer_norm_params(),
         "multihead_attention_params": multihead_attention_params,
@@ -459,13 +459,13 @@ def transformer_forward_fn(
 
 def transformer_predict_fn(
     src_token_ids,
+    sos_idx,
+    max_sequence_length,
     src_embeddings_table,
     trg_embeddings_table,
     encoder_stack,
     decoder_stack,
     final_linear_layer_params,
-    sos_idx,
-    max_sequence_length,
 ):
     # encoder forward pass
     Z = encoder(src_token_ids, src_embeddings_table, encoder_stack)
@@ -474,9 +474,10 @@ def transformer_predict_fn(
     # start with just [sos_idx] as the decoder input, each step add the token with the
     # highest predicted next token probability to the decoder input and repeat until a
     # sequence of length max_sequence_length is constructed
+    trg_vocab_size = trg_embeddings_table.shape[0]
     trg_token_ids = jnp.array([sos_idx])
-    logits = jnp.array([])
-    for _ in range(max_sequence_length):
+    logits = jnp.empty((max_sequence_length, trg_vocab_size))
+    for i in range(max_sequence_length):
         # decoder forward pass
         probabilities = decoder(
             trg_token_ids,
@@ -493,7 +494,7 @@ def transformer_predict_fn(
         predicted_next_token_idx = jnp.argmax(next_token_probability_distribution)
 
         # append probability dist to logits so we can return it to the caller
-        logits = jnp.append(logits, next_token_probability_distribution)
+        logits = logits.at[i].set(next_token_probability_distribution)
 
         # append the predict next token to the decoder input for the next iteration
         trg_token_ids = jnp.concatenate(

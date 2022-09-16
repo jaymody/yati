@@ -1,7 +1,7 @@
 import jax
 import jax.numpy as jnp
 
-from main import initialize_transformer_weights
+from main import initialize_transformer_params
 
 
 def test_initialization_is_random():
@@ -35,8 +35,15 @@ def test_initialization_is_random():
         return b[b[:, 1].argsort()][::-1]
 
     _seed = 111
-    weights = initialize_transformer_weights(
-        _seed, 512 // 128, 512 // 128, 512 // 128, 2048 // 128, 2, 2, 2, 10
+    weights = initialize_transformer_params(
+        seed=127,
+        src_vocab_size=10,
+        trg_vocab_size=20,
+        d_model=8,
+        d_ff=16,
+        h=2,
+        n_enc_layers=3,
+        n_dec_layers=3,
     )
     weights_flattened = jnp.array(flatten_and_concat(weights))
     num_params = weights_flattened.shape[0]
@@ -47,3 +54,7 @@ def test_initialization_is_random():
     test = jax.random.normal(key, (num_params,))
     print()
     print(value_counts(test)[:20])
+
+
+if __name__ == "__main__":
+    test_initialization_is_random()

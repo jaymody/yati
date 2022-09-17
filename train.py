@@ -1,6 +1,6 @@
 from typing import Optional
 
-from data import load_wmt_2014_pairs, train_tokenizer
+from utils import load_wmt_2014_pairs, train_tokenizer
 
 
 def get_train_val_test_pairs(

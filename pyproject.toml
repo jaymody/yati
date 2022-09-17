@@ -20,7 +20,6 @@ isort = "^5.10.1"
 [tool.poetry.group.scripts.dependencies]
 tokenizers = "^0.12.1"
 datasets = "^2.4.0"
-torch = "^1.12.1"
 
 [build-system]
 requires = ["poetry-core"]

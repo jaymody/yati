@@ -1,6 +1,19 @@
-from torch.utils.data import DataLoader
+from typing import Optional
 
-from data import PAD_index, TranslationCollateFn, WMT2014Dataset
+from data import load_wmt_2014_pairs, train_tokenizer
+
+
+def get_train_val_test_pairs(
+    src_lang: str,
+    trg_lang: str,
+    n_train_pairs: Optional[int] = None,
+    n_val_pairs: Optional[int] = None,
+    n_test_pairs: Optional[int] = None,
+):
+    train_pairs = load_wmt_2014_pairs(src_lang, trg_lang, "train")[:n_train_pairs]
+    val_pairs = load_wmt_2014_pairs(src_lang, trg_lang, "validation")[:n_val_pairs]
+    test_pairs = load_wmt_2014_pairs(src_lang, trg_lang, "test")[:n_test_pairs]
+    return train_pairs, val_pairs, test_pairs
 
 
 def train(
@@ -25,43 +38,24 @@ def train(
     # dev
     fast_dev_run=True,
 ):
-    # load dataset
-    train_val_test_datasets = WMT2014Dataset.load_train_val_test_datasets(
-        src_lang=src_lang,
-        trg_lang=trg_lang,
+    # load pairs
+    train_pairs, val_pairs, test_pairs = get_train_val_test_pairs(
+        src_lang,
+        trg_lang,
+        n_test_pairs=1000 if fast_dev_run else None,
+        n_val_pairs=1000 if fast_dev_run else None,
+        n_test_pairs=1000 if fast_dev_run else None,
+    )
+
+    # train tokenizer (we use a shared tokenizer between src texts and trg texts, but
+    # is only trained on the train pair texts)
+    tokenizer = train_tokenizer(
+        texts=[text for pair in train_pairs for text in pair],
         tokenizer_type=tokenizer_type,
         vocab_size=vocab_size,
-        percentage_to_keep=0.01 if fast_dev_run else 1.0,
-    )
-    train_dataset, val_dataset, test_dataset = train_val_test_datasets
-
-    # get tokenizer (shared across src and trg and also across train val and test)
-    tokenizer = train_dataset.src_tokenizer
-
-    # dataloaders
-    train_dataloader = DataLoader(
-        train_dataset,
-        batch_size=train_batch_size,
-        shuffle=True,
-        collate_fn=TranslationCollateFn(pad_idx=PAD_index),
-        num_workers=num_workers,
-    )
-    val_dataloader = DataLoader(
-        val_dataset,
-        batch_size=val_batch_size,
-        shuffle=False,
-        collate_fn=TranslationCollateFn(pad_idx=PAD_index),
-        num_workers=num_workers,
-    )
-    test_dataloader = DataLoader(
-        test_dataset,
-        batch_size=test_batch_size,
-        shuffle=True,
-        collate_fn=TranslationCollateFn(pad_idx=PAD_index),
-        num_workers=num_workers,
     )
 
-    # TODO: implement train val and test
+    # TODO: implement the rest of this function
 
 
 if __name__ == "__main__":

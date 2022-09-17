@@ -18,25 +18,25 @@ def get_train_val_test_pairs(
 
 def train(
     # dataset
-    src_lang="en",
-    trg_lang="de",
+    src_lang: str = "en",
+    trg_lang: str = "de",
     # tokenizer
-    tokenizer_type="bpe",
-    vocab_size=32000,
+    tokenizer_type: str = "bpe",
+    vocab_size: int = 32000,
     # data stuff
-    train_batch_size=128,
-    val_batch_size=256,
-    test_batch_size=256,
-    num_workers=8,
+    train_batch_size: int = 128,
+    val_batch_size: int = 256,
+    test_batch_size: int = 256,
+    num_workers: int = 8,
     # model stuff
-    seed=123,
-    d_model=512,
-    d_ff=2048,
-    h=8,
-    n_enc_layers=6,
-    n_dec_layers=6,
+    seed: int = 123,
+    d_model: int = 512,
+    d_ff: int = 2048,
+    h: int = 8,
+    n_enc_layers: int = 6,
+    n_dec_layers: int = 6,
     # dev
-    fast_dev_run=True,
+    fast_dev_run: bool = True,
 ):
     # load pairs
     train_pairs, val_pairs, test_pairs = get_train_val_test_pairs(

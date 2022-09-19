@@ -52,16 +52,16 @@ def data_iterator(pairs, tokenizer, batch_size):
     trg_token_ids = [enc.ids for enc in tokenizer.encode_batch(trg_texts)]
 
     for i in range(0, len(src_token_ids), batch_size):
-        src_token_ids_batch = src_token_ids[i : i + batch_size]
-        trg_token_ids_batch = trg_token_ids[i : i + batch_size]
+        src_token_ids_batch = jnp.array(src_token_ids[i : i + batch_size])
+        trg_token_ids_batch = jnp.array(trg_token_ids[i : i + batch_size])
         yield src_token_ids_batch, trg_token_ids_batch
 
 
 def predict_data_iterator(src_texts, tokenizer, batch_size):
-    src_encodings = tokenizer.encode(src_texts)
+    src_encodings = tokenizer.encode_batch(src_texts)
 
     for i in range(0, len(src_encodings), batch_size):
-        src_token_ids = src_encodings[i : i + batch_size].ids
+        src_token_ids = jnp.array(src_encodings[i : i + batch_size].ids)
         yield src_token_ids
 
 

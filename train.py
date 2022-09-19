@@ -20,8 +20,12 @@ def loss_fn(src_token_ids, trg_token_ids, params_dict):
         trg_token_ids,
         **params_dict,
     )
-    loss = categorical_cross_entropy(next_token_probabilities[:-1], trg_token_ids[1:])
-    return loss
+    loss = jnp.array(0)
+    for i in range(len(next_token_probabilities) - 1):
+        loss = loss + categorical_cross_entropy(
+            next_token_probabilities[i], trg_token_ids[i + 1]
+        )
+    return loss / (len(next_token_probabilities) - 1)
 
 
 def update_step(lr, grad, params_dict):
@@ -34,18 +38,27 @@ def data_iterator(pairs, src_tokenizer, trg_tokenizer, batch_size):
     src_token_ids = [enc.ids for enc in src_tokenizer.encode_batch(src_texts)]
     trg_token_ids = [enc.ids for enc in trg_tokenizer.encode_batch(trg_texts)]
 
-    for i in range(0, len(src_token_ids), batch_size):
-        src_token_ids_batch = jnp.array(src_token_ids[i : i + batch_size])
-        trg_token_ids_batch = jnp.array(trg_token_ids[i : i + batch_size])
-        yield src_token_ids_batch, trg_token_ids_batch
+    # TODO: implement batching (requires pad mask)
+    # for i in range(0, len(src_token_ids), batch_size):
+    #     src_token_ids_batch = jnp.array(src_token_ids[i : i + batch_size])
+    #     trg_token_ids_batch = jnp.array(trg_token_ids[i : i + batch_size])
+
+    #     yield src_token_ids_batch, trg_token_ids_batch
+
+    for i in range(len(src_token_ids)):
+        yield jnp.array(src_token_ids[i]), jnp.array(trg_token_ids[i])
 
 
 def predict_data_iterator(src_texts, src_tokenizer, batch_size):
-    src_encodings = src_tokenizer.encode_batch(src_texts)
+    src_token_ids = [enc.ids for enc in src_tokenizer.encode_batch(src_texts)]
 
-    for i in range(0, len(src_encodings), batch_size):
-        src_token_ids = jnp.array(src_encodings[i : i + batch_size].ids)
-        yield src_token_ids
+    # TODO: implement batching (requires pad mask)
+    # for i in range(0, len(src_token_ids), batch_size):
+    #     src_token_ids_batch = jnp.array(src_token_ids[i : i + batch_size])
+    #     yield src_token_ids_batch
+
+    for i in range(len(src_token_ids)):
+        yield jnp.array(src_token_ids[i])
 
 
 def train(
@@ -72,13 +85,13 @@ def train(
             trg_tokenizer,
             train_batch_size,
         ):
-            train_loss, grad = jax.jit(
-                jax.value_and_grad(loss_fn, argnums=2)(
-                    src_token_ids,
-                    trg_token_ids,
-                    params_dict,
-                )
+            # TODO: implement batching
+            train_loss, grad = jax.value_and_grad(loss_fn, argnums=2)(
+                src_token_ids,
+                trg_token_ids,
+                params_dict,
             )
+
             params_dict = update_step(lr, grad, params_dict)
             print(f"train_loss = {train_loss}")
 

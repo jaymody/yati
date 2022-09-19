@@ -86,20 +86,17 @@ def final_linear_layer(x, W, b):
     return softmax(x @ W + b)
 
 
-def scaled_dot_product_attention(Q, K, V, mask=None):
+def scaled_dot_product_attention(Q, K, V, mask):
     # Q -> (in_seq_len, d_k)
     # K -> (out_seq_len, d_k)
     # V -> (out_seq_len, d_v)
     # mask -> (in_seq_len, out_seq_len)
-    #   mask[i][j] = True means mask this connection (illegal connection)
-    #   mask[i][j] = False means don't mask this connection (valid connection)
-    #   mask = None means no masking (in other words, every connection is valid)
+    #   mask[i][j] = -jpn.inf means mask this connection (illegal connection)
+    #   mask[i][j] = 0 means don't mask this connection (valid connection)
 
     # output -> (out_seq_len, d_v)
-    assert mask is None or mask.dtype == jnp.bool_
 
     d_k = K.shape[-1]
-    mask = 0 if mask is None else mask * -jnp.inf
     return softmax((Q @ K.T / jnp.sqrt(d_k)) + mask) @ V
 
 
@@ -382,9 +379,11 @@ def create_mask(x, pad_idx):
 ######### Transformer ##########
 ################################
 def encoder(src_token_ids, src_embeddings_table, encoder_stack):
+    src_seq_len = src_token_ids.shape[0]
+
     # (src_seq_len, src_seq_len)
-    # TODO: pad masking
-    src_mask = None
+    # TODO: pad masking, also maybe this should only be done once between enc and dec?
+    src_mask = jnp.zeros((src_seq_len, src_seq_len))
 
     # (src_seq_len) -> (src_seq_len, d_model)
     src_embeddings = embedding_lookup(src_token_ids, src_embeddings_table)
@@ -404,12 +403,15 @@ def encoder(src_token_ids, src_embeddings_table, encoder_stack):
 def decoder(
     trg_token_ids, Z, trg_embeddings_table, decoder_stack, final_linear_layer_params
 ):
+    src_seq_len = Z.shape[0]
+    trg_seq_len = trg_token_ids.shape[0]
+
     # (src_seq_len, src_seq_len)
     # TODO: pad masking, also maybe this should only be done once between enc and dec?
-    src_mask = None
+    src_mask = jnp.zeros((src_seq_len, trg_seq_len))
 
     # (trg_seq_len, trg_seq_len)
-    trg_mask = create_illegal_connections_mask(seq_len=trg_token_ids.shape[0])
+    trg_mask = create_illegal_connections_mask(seq_len=trg_seq_len)
 
     # (trg_seq_len) -> (trg_seq_len, d_model)
     trg_embeddings = embedding_lookup(trg_token_ids, trg_embeddings_table)

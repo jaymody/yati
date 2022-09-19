@@ -12,8 +12,18 @@ def relu(x):
 
 
 def softmax(x):
-    # x -> (d_model)
-    # output -> (d_model)
+    # # x -> (d_model)
+    # # output -> (d_model)
+
+    # we can write softmax as: jnp.exp(x) / jnp.sum(jnp.exp(x))
+    # however with large enough inputs the exponent will become very large
+    # and cause numerical instability (we will start to get nan values and such)
+    #
+    # so we use a more numerically stable version of softmax, where we shift the input
+    # by the max value such that the max value is now 0
+    #
+    # see Practical Issues section of https://cs231n.github.io/linear-classify/#softmax-classifier
+    x = x - jnp.max(x)  # make our calculation numerically stable
     return jnp.exp(x) / jnp.sum(jnp.exp(x))
 
 

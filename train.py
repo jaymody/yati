@@ -61,6 +61,37 @@ def predict_data_iterator(src_texts, src_tokenizer, batch_size):
         yield jnp.array(src_token_ids[i])
 
 
+def get_transformer_model(
+    size: str,
+    seed: int,
+    src_vocab_size: int,
+    trg_vocab_size: int,
+):
+    model_kwargs_for_size = {
+        "base": {
+            "d_model": 512,
+            "d_ff": 2048,
+            "h": 8,
+            "n_enc_layers": 6,
+            "n_dec_layers": 6,
+        },
+        "tiny": {
+            "d_model": 128,
+            "d_ff": 512,
+            "h": 4,
+            "n_enc_layers": 3,
+            "n_dec_layers": 3,
+        },
+    }
+
+    return initialize_transformer_params(
+        seed=seed,
+        src_vocab_size=src_vocab_size,
+        trg_vocab_size=trg_vocab_size,
+        **model_kwargs_for_size[size],
+    )
+
+
 def train(
     train_pairs: list[tuple[str, str]],
     val_pairs: list[tuple[str, str]],
@@ -68,11 +99,9 @@ def train(
     src_tokenizer: Tokenizer,
     trg_tokenizer: Tokenizer,
     params_dict: dict,
-    # data stuff
     train_batch_size: int = 128,
     val_batch_size: int = 256,
     test_batch_size: int = 256,
-    # train hyper parameters
     n_epochs: int = 10,
     lr: float = 1e-4,
 ):
@@ -109,27 +138,16 @@ def train(
 
 
 def train_wmt2014(
-    # dataset
     src_lang: str = "en",
     trg_lang: str = "de",
-    # tokenizer
     tokenizer_type: str = "bpe",
     vocab_size: int = 32000,
-    # data stuff
     train_batch_size: int = 128,
     val_batch_size: int = 256,
     test_batch_size: int = 256,
-    # model stuff
     seed: int = 123,
-    d_model: int = 512,
-    d_ff: int = 2048,
-    h: int = 8,
-    n_enc_layers: int = 6,
-    n_dec_layers: int = 6,
-    # train hyper parameters
     n_epochs: int = 10,
     lr: float = 1e-4,
-    # dev
     fast_dev_run: bool = True,
 ):
     n_train_pairs = 500 if fast_dev_run else None
@@ -150,16 +168,7 @@ def train_wmt2014(
         vocab_size=vocab_size,
     )
 
-    params_dict = initialize_transformer_params(
-        seed=seed,
-        src_vocab_size=vocab_size,
-        trg_vocab_size=vocab_size,
-        d_model=d_model,
-        d_ff=d_ff,
-        h=h,
-        n_enc_layers=n_enc_layers,
-        n_dec_layers=n_dec_layers,
-    )
+    params_dict = get_transformer_model("base", seed, vocab_size, vocab_size)
 
     train(
         train_pairs=train_pairs,
@@ -177,21 +186,12 @@ def train_wmt2014(
 
 
 def train_charsort(
-    # data stuff
     train_batch_size: int = 128,
     val_batch_size: int = 256,
     test_batch_size: int = 256,
-    # model stuff
     seed: int = 123,
-    d_model: int = 512,
-    d_ff: int = 2048,
-    h: int = 8,
-    n_enc_layers: int = 6,
-    n_dec_layers: int = 6,
-    # train hyper parameters
     n_epochs: int = 10,
     lr: float = 1e-4,
-    # dev
     fast_dev_run: bool = True,
 ):
     n_train_pairs = 500 if fast_dev_run else 100000
@@ -213,16 +213,7 @@ def train_charsort(
     )
     vocab_size = tokenizer.get_vocab_size()
 
-    params_dict = initialize_transformer_params(
-        seed=seed,
-        src_vocab_size=vocab_size,
-        trg_vocab_size=vocab_size,
-        d_model=d_model,
-        d_ff=d_ff,
-        h=h,
-        n_enc_layers=n_enc_layers,
-        n_dec_layers=n_dec_layers,
-    )
+    params_dict = get_transformer_model("tiny", seed, vocab_size, vocab_size)
 
     train(
         train_pairs=train_pairs,
@@ -240,4 +231,7 @@ def train_charsort(
 
 
 if __name__ == "__main__":
+    from jax.config import config
+
+    config.update("jax_debug_nans", True)
     train_charsort(fast_dev_run=True)

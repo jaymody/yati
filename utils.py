@@ -90,12 +90,12 @@ def load_wmt_2014_pairs(
 
 
 def create_unsorted_sorted_char_pairs(
-    n_examples,
-    min_length,
-    max_length,
-    seed,
-    replace=True,
-    population=string.ascii_lowercase,
+    n_examples: int,
+    min_length: int,
+    max_length: int,
+    seed: int,
+    replace: bool = True,
+    population: str = string.ascii_lowercase,
 ):
     assert min_length >= 1
     assert max_length >= min_length

@@ -360,18 +360,18 @@ def decoder_layer(
 ################################
 def create_pad_mask(x, pad_idx):
     # x -> (seq_len)
-    # output -> (seq_len, seq_len), positions that are True will be masked out
+    # output -> (seq_len, seq_len), positions that are True are to be masked out
     return (x == pad_idx).reshape(1, -1) | (x == pad_idx).reshape(-1, 1)
 
 
 def create_illegal_connections_mask(seq_len):
-    # output -> (seq_len, seq_len), positions that are True will be masked out
+    # output -> (seq_len, seq_len), positions that are True are to be masked out
     return ~jnp.tri(seq_len, seq_len, k=0, dtype=jnp.bool_)
 
 
 def create_mask(x, pad_idx):
     # x -> (seq_len)
-    # output -> (seq_len, seq_len), positions that are True will be masked out
+    # output -> (seq_len, seq_len), positions that are True are to be masked out
     return create_pad_mask(x, pad_idx) | create_illegal_connections_mask(x.shape[0])
 
 
@@ -411,7 +411,7 @@ def decoder(
     src_mask = jnp.zeros((trg_seq_len, src_seq_len))
 
     # (trg_seq_len, trg_seq_len)
-    trg_mask = create_illegal_connections_mask(seq_len=trg_seq_len)
+    trg_mask = create_illegal_connections_mask(seq_len=trg_seq_len) * -jnp.inf
 
     # (trg_seq_len) -> (trg_seq_len, d_model)
     trg_embeddings = embedding_lookup(trg_token_ids, trg_embeddings_table)

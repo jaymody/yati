@@ -144,7 +144,7 @@ def initialize_embedding_lookup_table(key, n: int, d: int):
 
 
 def initialize_layer_norm_params():
-    return {"gamma": jnp.array(1), "beta": jnp.array(0)}
+    return {"gamma": jnp.array(1.0), "beta": jnp.array(0.0)}
 
 
 def initialize_position_wise_ffn_params(key, d_model: int, d_ff: int):

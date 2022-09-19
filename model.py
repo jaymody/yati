@@ -101,9 +101,9 @@ def scaled_dot_product_attention(Q, K, V, mask):
 
 
 def multihead_attention(Q, K, V, WQ, WK, WV, WO, mask):
-    # Q -> (in_seq_len, d_k)
-    # K -> (out_seq_len, d_k)
-    # V -> (out_seq_len, d_v)
+    # Q -> (in_seq_len, d_model)
+    # K -> (out_seq_len, d_model)
+    # V -> (out_seq_len, d_model)
     # mask -> (in_seq_len, out_seq_len)
 
     # WQi -> (h, d_model, d_k)

@@ -1,3 +1,7 @@
+import random
+import string
+from tkinter.tix import Tree
+
 from datasets import load_dataset
 from tokenizers import Tokenizer
 from tokenizers.models import BPE, WordPiece
@@ -82,4 +86,36 @@ def load_wmt_2014_pairs(
     # build pairs list
     pairs = [(d[src_lang], d[trg_lang]) for d in dataset["translation"]]
 
+    return pairs
+
+
+def create_unsorted_sorted_char_pairs(
+    n_examples,
+    min_length,
+    max_length,
+    seed,
+    replace=True,
+    population=string.ascii_lowercase,
+):
+    assert min_length >= 1
+    assert max_length >= min_length
+    if replace:
+        assert max_length <= len(population)
+
+    rng = random.Random(seed)
+
+    def random_sequence():
+        k = rng.randint(min_length, max_length)
+        if replace:
+            return rng.choices(population, k=k)
+        else:
+            return rng.sample(population, k=k)
+
+    srcs = [random_sequence() for _ in range(n_examples)]
+    trgs = [sorted(src) for src in srcs]
+
+    srcs = ["".join(src) for src in srcs]
+    trgs = ["".join(trg) for trg in trgs]
+
+    pairs = list(zip(srcs, trgs))
     return pairs

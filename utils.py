@@ -50,15 +50,17 @@ def train_tokenizer(
     # get model, trainer, pre_tokenizer, and normalizer based on token type
     model_class = TOKENIZER_TYPES[tokenizer_type]["model_class"]
     trainer_class = TOKENIZER_TYPES[tokenizer_type]["trainer_class"]
-    pre_tokenizer = TOKENIZER_TYPES[tokenizer_type]["trainer"]
+    pre_tokenizer = TOKENIZER_TYPES[tokenizer_type]["pre_tokenizer"]
     normalizer = TOKENIZER_TYPES[tokenizer_type]["normalizer"]
 
     # initialize tokenizer from model
     tokenizer = Tokenizer(model_class(unk_token=UNK_token))
 
     # preprocessing and normalization
-    tokenizer.pre_tokenizer = pre_tokenizer
-    tokenizer.normalizer = normalizer
+    if pre_tokenizer is not None:
+        tokenizer.pre_tokenizer = pre_tokenizer
+    if normalizer is not None:
+        tokenizer.normalizer = normalizer
 
     # train tokenizer
     # we need to do this weird trainer_kwargs thing since setting vocab_size = None

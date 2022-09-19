@@ -408,7 +408,7 @@ def decoder(
 
     # (src_seq_len, src_seq_len)
     # TODO: pad masking, also maybe this should only be done once between enc and dec?
-    src_mask = jnp.zeros((src_seq_len, trg_seq_len))
+    src_mask = jnp.zeros((trg_seq_len, src_seq_len))
 
     # (trg_seq_len, trg_seq_len)
     trg_mask = create_illegal_connections_mask(seq_len=trg_seq_len)

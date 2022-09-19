@@ -1,6 +1,5 @@
 import random
 import string
-from tkinter.tix import Tree
 
 from datasets import load_dataset
 from tokenizers import Tokenizer

@@ -1,13 +1,14 @@
 import random
 import string
+from typing import Optional
 
 from datasets import load_dataset
 from tokenizers import Tokenizer
-from tokenizers.models import BPE, WordPiece
+from tokenizers.models import BPE, WordLevel, WordPiece
 from tokenizers.normalizers import NFD, Lowercase, Sequence, StripAccents
-from tokenizers.pre_tokenizers import WhitespaceSplit
+from tokenizers.pre_tokenizers import Split, WhitespaceSplit
 from tokenizers.processors import TemplateProcessing
-from tokenizers.trainers import BpeTrainer, WordPieceTrainer
+from tokenizers.trainers import BpeTrainer, WordLevelTrainer, WordPieceTrainer
 
 PAD_token = "<pad>"
 UNK_token = "<unk>"
@@ -21,12 +22,22 @@ EOS_index = 3
 
 TOKENIZER_TYPES = {
     "bpe": {
-        "model": BPE,
-        "trainer": BpeTrainer,
+        "model_class": BPE,
+        "trainer_class": BpeTrainer,
+        "pre_tokenizer": WhitespaceSplit(),
+        "normalizer": Sequence([NFD(), StripAccents(), Lowercase()]),
     },
     "wordpiece": {
-        "model": WordPiece,
-        "trainer": WordPieceTrainer,
+        "model_class": WordPiece,
+        "trainer_class": WordPieceTrainer,
+        "pre_tokenizer": WhitespaceSplit(),
+        "normalizer": Sequence([NFD(), StripAccents(), Lowercase()]),
+    },
+    "charlevel": {
+        "model_class": WordLevel,
+        "trainer_class": WordLevelTrainer,
+        "pre_tokenizer": Split("", behavior="isolated"),
+        "normalizer": None,
     },
 }
 
@@ -34,22 +45,27 @@ TOKENIZER_TYPES = {
 def train_tokenizer(
     texts: list[str],
     tokenizer_type: str,
-    vocab_size: int,
+    vocab_size: Optional[int] = None,
 ) -> Tokenizer:
-    # get model and trainer for the given tokenizer type
-    model_class = TOKENIZER_TYPES[tokenizer_type]["model"]
-    trainer_class = TOKENIZER_TYPES[tokenizer_type]["trainer"]
+    # get model, trainer, pre_tokenizer, and normalizer based on token type
+    model_class = TOKENIZER_TYPES[tokenizer_type]["model_class"]
+    trainer_class = TOKENIZER_TYPES[tokenizer_type]["trainer_class"]
+    pre_tokenizer = TOKENIZER_TYPES[tokenizer_type]["trainer"]
+    normalizer = TOKENIZER_TYPES[tokenizer_type]["normalizer"]
 
     # initialize tokenizer from model
     tokenizer = Tokenizer(model_class(unk_token=UNK_token))
 
     # preprocessing and normalization
-    tokenizer.normalizer = Sequence([NFD(), StripAccents(), Lowercase()])
-    tokenizer.pre_tokenizer = WhitespaceSplit()
+    tokenizer.pre_tokenizer = pre_tokenizer
+    tokenizer.normalizer = normalizer
 
     # train tokenizer
+    # we need to do this weird trainer_kwargs thing since setting vocab_size = None
+    # breaks trainers (either you don't set it at all, or it must be an integer)
+    trainer_kwargs = {} if vocab_size is None else {"vocab_size": vocab_size}
     trainer = trainer_class(
-        vocab_size=vocab_size,
+        **trainer_kwargs,
         special_tokens=[PAD_token, UNK_token, SOS_token, EOS_token],
     )
     tokenizer.train_from_iterator(texts, trainer=trainer, length=len(texts))

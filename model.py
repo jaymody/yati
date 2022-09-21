@@ -30,39 +30,36 @@ def softmax(x):
 ################################
 #### Positional Embeddings #####
 ################################
-def create_positional_embedding(learned_embedding, pos: int):
-    # learned_embedding -> (d_model)
-    # pos -> the position of the given embedding (token) in the sequence from 0 to seq_len - 1
-    # output -> (d_model)
-
-    # TODO: do we start indexing at 0 or 1, I'm assuming it's implied as 1 by the paper
-    # since we are using mathematical notation (not that it will make a difference
-    # anyways, but it does change the result of the equation slightly)
-    d_model = learned_embedding.shape[0]
-
-    odd_indices = jnp.arange(2, d_model + 1, 2)
-    even_indices = jnp.arange(1, d_model + 1, 2)
-
-    positional_embedding = jnp.empty_like(learned_embedding)
-    positional_embedding = positional_embedding.at[odd_indices - 1].set(
-        jnp.cos(pos / jnp.power(10000, 2 * odd_indices / d_model))
-    )
-    positional_embedding = positional_embedding.at[even_indices - 1].set(
-        jnp.sin(pos / jnp.power(10000, 2 * even_indices / d_model))
-    )
-
-    return positional_embedding
-
-
 def create_positional_embeddings(learned_embeddings):
     # learned_embeddings -> (seq_len, d_model)
-    positional_embeddings = jnp.stack(
-        [
-            create_positional_embedding(learned_embedding, pos)
-            for pos, learned_embedding in enumerate(learned_embeddings)
-        ]
+
+    def create_positional_embedding(learned_embedding, pos: int):
+        # learned_embedding -> (d_model)
+        # pos -> the position of the given embedding (token) in the sequence from 0 to seq_len - 1
+        # output -> (d_model)
+
+        # TODO: do we start indexing at 0 or 1, I'm assuming it's implied as 1 by the paper
+        # since we are using mathematical notation (not that it will make a difference
+        # anyways, but it does change the result of the equation slightly)
+        d_model = learned_embedding.shape[0]
+
+        odd_indices = jnp.arange(2, d_model + 1, 2)
+        even_indices = jnp.arange(1, d_model + 1, 2)
+
+        positional_embedding = jnp.empty_like(learned_embedding)
+        positional_embedding = positional_embedding.at[odd_indices - 1].set(
+            jnp.cos(pos / jnp.power(10000, 2 * odd_indices / d_model))
+        )
+        positional_embedding = positional_embedding.at[even_indices - 1].set(
+            jnp.sin(pos / jnp.power(10000, 2 * even_indices / d_model))
+        )
+
+        return positional_embedding
+
+    return jax.vmap(create_positional_embedding)(
+        learned_embeddings,
+        jnp.arange(learned_embeddings.shape[0]),
     )
-    return positional_embeddings
 
 
 ################################
@@ -81,19 +78,36 @@ def embedding_lookup(token_indices, embedding_lookup_table):
     return embedding_lookup_table[token_indices]
 
 
-def position_wise_ffn(x, W1, b1, W2, b2):
-    # X -> (d_model)
+def position_wise_ffn(X, W1, b1, W2, b2):
+    # X -> (seq_len, d_model)
     # W1 -> (d_model, d_ff)
     # b1 -> (d_ff)
     # W2 -> (d_ff, d_model)
     # b1 -> (d_model)
 
-    # output -> (d_model)
-    return relu(x @ W1 + b1) @ W2 + b2
+    # output -> (seq_len, d_model)
+
+    def ffn(x, W1, b1, W2, b2):
+        # x -> (d_model)
+        # output -> (d_model)
+        return relu(x @ W1 + b1) @ W2 + b2
+
+    return jax.vmap(ffn, (0, None, None, None, None), 0)(X, W1, b1, W2, b2)
 
 
-def final_linear_layer(x, W, b):
-    return softmax(x @ W + b)
+def final_linear_layer(X, W, b):
+    # X -> (trg_seq_len, d_model)
+    # W -> (d_model, trg_vocab_size)
+    # b -> (trg_vocab_size)
+
+    # output -> (trg_seq_len, trg_vocab_size)
+
+    def ffn(x, W, b):
+        # x -> (d_model)
+        # output -> (trg_vocab_size)
+        return softmax(x @ W + b)
+
+    return jax.vmap(ffn, (0, None, None), 0)(X, W, b)
 
 
 def scaled_dot_product_attention(Q, K, V, mask):
@@ -116,24 +130,21 @@ def multihead_attention(Q, K, V, WQ, WK, WV, WO, mask):
     # V -> (out_seq_len, d_model)
     # mask -> (in_seq_len, out_seq_len)
 
-    # WQi -> (h, d_model, d_k)
-    # WKi -> (h, d_model, d_k)
-    # WVi -> (h, d_model, d_v)
-    # WO  -> (h * d_v, d_model)
+    # WQ -> (h, d_model, d_k)
+    # WK -> (h, d_model, d_k)
+    # WV -> (h, d_model, d_v)
+    # WO -> (h * d_v, d_model)
 
     # h = number of attentions heads
     # output -> (out_seq_len, d_model)
 
-    # TODO: don't use a for loop here, you can probably implement this via vectorized
-    # functions
-    h = WQ.shape[0]
-    heads = []
-    for i in range(h):
-        heads.append(
-            scaled_dot_product_attention(
-                Q=Q @ WQ[i], K=K @ WK[i], V=V @ WV[i], mask=mask
-            )
-        )
+    Q = Q @ WQ  # (in_seq_len, d_model) @ (h, d_model, d_k) -> (h, in_seq_len, d_k)
+    K = K @ WK  # (in_seq_len, d_model) @ (h, d_model, d_k) -> (h, in_seq_len, d_k)
+    V = V @ WV  # (in_seq_len, d_model) @ (h, d_model, d_v) -> (h, in_seq_len, d_v)
+
+    # heads -> (h, out_seq_len, d_v)
+    heads = jax.vmap(scaled_dot_product_attention, (0, 0, 0, None), 0)(Q, K, V, mask)
+
     return jnp.hstack(heads) @ WO
 
 
@@ -316,9 +327,8 @@ def encoder_layer(
     out = layer_norm(prev + out, **layer_norm1_params)
 
     # position wise ffn
-    # TODO: probably use jax vmap for position_wise_ffn
     prev = out
-    out = jnp.stack([position_wise_ffn(o, **position_wise_ffn_params) for o in out])
+    out = position_wise_ffn(out, **position_wise_ffn_params)
     out = layer_norm(prev + out, **layer_norm2_params)
 
     return out
@@ -357,9 +367,8 @@ def decoder_layer(
     out = layer_norm(prev + out, **layer_norm2_params)
 
     # position wise ffn
-    # TODO: probably use jax vmap for position_wise_ffn
     prev = out
-    out = jnp.stack([position_wise_ffn(o, **position_wise_ffn_params) for o in out])
+    out = position_wise_ffn(out, **position_wise_ffn_params)
     out = layer_norm(prev + out, **layer_norm3_params)
 
     return out
@@ -437,9 +446,7 @@ def decoder(
         )
 
     # (trg_seq_len, d_model) -> (trg_seq_len, trg_vocab_size)
-    next_token_probabilities = jnp.stack(
-        [final_linear_layer(x, **final_linear_layer_params) for x in X]
-    )
+    next_token_probabilities = final_linear_layer(X, **final_linear_layer_params)
 
     # (trg_seq_len, trg_vocab_size)
     return next_token_probabilities

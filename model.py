@@ -266,6 +266,7 @@ def initialize_transformer_params(
     h,
     n_enc_layers,
     n_dec_layers,
+    shared_embeddings,
 ):
     key = jax.random.PRNGKey(seed)
     key, src_embedding_key = jax.random.split(key)
@@ -279,9 +280,14 @@ def initialize_transformer_params(
         src_embedding_key, src_vocab_size, d_model
     )
 
-    trg_embeddings_table = initialize_embedding_lookup_table(
-        trg_embedding_key, trg_vocab_size, d_model
-    )
+    # TODO: does this actually work as intended? I don't think so ...
+    if shared_embeddings:
+        assert src_vocab_size == trg_vocab_size
+        trg_embeddings_table = src_embeddings_table
+    else:
+        trg_embeddings_table = initialize_embedding_lookup_table(
+            trg_embedding_key, trg_vocab_size, d_model
+        )
 
     encoder_stack = [
         initialize_encoder_layer(enc_keys[i], d_model, d_ff, h)

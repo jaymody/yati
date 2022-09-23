@@ -66,6 +66,7 @@ def get_transformer_model(
     seed: int,
     src_vocab_size: int,
     trg_vocab_size: int,
+    shared_embeddings: bool,
 ):
     model_kwargs_for_size = {
         "base": {
@@ -88,6 +89,7 @@ def get_transformer_model(
         seed=seed,
         src_vocab_size=src_vocab_size,
         trg_vocab_size=trg_vocab_size,
+        shared_embeddings=shared_embeddings,
         **model_kwargs_for_size[size],
     )
 

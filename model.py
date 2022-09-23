@@ -65,9 +65,11 @@ def create_positional_embeddings(learned_embeddings):
 ################################
 ######### Basic Layers #########
 ################################
-def layer_norm(x, gamma: int, beta: int, eps: float = 1e-8):
-    # x -> any shapes
-    # output -> shape shape as x
+def layer_norm(x, gamma, beta, eps: float = 1e-8):
+    # x -> (d_model)
+    # gamma -> (d_model)
+    # beta -> (d_model)
+    # output -> same shape as x
     # https://pytorch.org/docs/stable/generated/torch.nn.LayerNorm.html
     return gamma * (x - jnp.mean(x)) / (jnp.std(x) + eps) + beta
 
@@ -164,8 +166,8 @@ def initialize_embedding_lookup_table(key, n: int, d: int):
     return jax.random.normal(key, (n, d))
 
 
-def initialize_layer_norm_params():
-    return {"gamma": jnp.array(1.0), "beta": jnp.array(0.0)}
+def initialize_layer_norm_params(d_model: int):
+    return {"gamma": jnp.ones((d_model,)), "beta": jnp.zeros((d_model,))}
 
 
 def initialize_position_wise_ffn_params(key, d_model: int, d_ff: int):
@@ -219,9 +221,9 @@ def initialize_encoder_layer(key, d_model, d_ff, h):
     )
     return {
         "multihead_attention_params": multihead_attention_params,
-        "layer_norm1_params": initialize_layer_norm_params(),
+        "layer_norm1_params": initialize_layer_norm_params(d_model),
         "position_wise_ffn_params": position_wise_ffn_params,
-        "layer_norm2_params": initialize_layer_norm_params(),
+        "layer_norm2_params": initialize_layer_norm_params(d_model),
     }
 
 
@@ -249,11 +251,11 @@ def initialize_decoder_layer(key, d_model, d_ff, h):
     )
     return {
         "masked_multihead_attention_params": masked_multihead_attention_params,
-        "layer_norm1_params": initialize_layer_norm_params(),
+        "layer_norm1_params": initialize_layer_norm_params(d_model),
         "multihead_attention_params": multihead_attention_params,
-        "layer_norm2_params": initialize_layer_norm_params(),
+        "layer_norm2_params": initialize_layer_norm_params(d_model),
         "position_wise_ffn_params": position_wise_ffn_params,
-        "layer_norm3_params": initialize_layer_norm_params(),
+        "layer_norm3_params": initialize_layer_norm_params(d_model),
     }
 
 

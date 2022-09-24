@@ -9,6 +9,7 @@ packages = [{include = "yati"}]
 [tool.poetry.dependencies]
 python = "^3.9"
 jax = {extras = ["cpu"], version = "^0.3.17"}
+ipywidgets = "^8.0.2"
 
 
 [tool.poetry.group.dev.dependencies]

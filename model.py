@@ -3,31 +3,6 @@ import jax.numpy as jnp
 
 
 ################################
-##### Activation Functions #####
-################################
-def relu(x):
-    # x -> any shape
-    # output -> same shape as x
-    return jnp.maximum(0, x)
-
-
-def softmax(x):
-    # # x -> (d_model)
-    # # output -> (d_model)
-
-    # we can write softmax as: jnp.exp(x) / jnp.sum(jnp.exp(x))
-    # however with large enough inputs the exponent will become very large
-    # and cause numerical instability (we will start to get nan values and such)
-    #
-    # so we use a more numerically stable version of softmax, where we shift the input
-    # by the max value such that the max value is now 0
-    #
-    # see Practical Issues section of https://cs231n.github.io/linear-classify/#softmax-classifier
-    x = x - jnp.max(x)  # make our calculation numerically stable
-    return jnp.exp(x) / jnp.sum(jnp.exp(x))
-
-
-################################
 #### Positional Embeddings #####
 ################################
 def create_positional_embeddings(seq_len: int, d_model: int):
@@ -86,7 +61,7 @@ def position_wise_ffn(X, W1, b1, W2, b2):
     def ffn(x, W1, b1, W2, b2):
         # x -> (d_model)
         # output -> (d_model)
-        return relu(x @ W1 + b1) @ W2 + b2
+        return jax.nn.relu(x @ W1 + b1) @ W2 + b2
 
     return jax.vmap(ffn, (0, None, None, None, None), 0)(X, W1, b1, W2, b2)
 
@@ -101,7 +76,7 @@ def final_linear_layer(X, final_linear_layer_matrix):
     def ffn(x, final_linear_layer_matrix):
         # x -> (d_model)
         # output -> (trg_vocab_size)
-        return softmax(x @ final_linear_layer_matrix)
+        return jax.nn.softmax(x @ final_linear_layer_matrix)
 
     return jax.vmap(ffn, (0, None), 0)(X, final_linear_layer_matrix)
 
@@ -117,7 +92,7 @@ def scaled_dot_product_attention(Q, K, V, mask):
     # output -> (out_seq_len, d_v)
 
     d_k = K.shape[-1]
-    return softmax((Q @ K.T / jnp.sqrt(d_k)) + mask) @ V
+    return jax.nn.softmax((Q @ K.T / jnp.sqrt(d_k)) + mask) @ V
 
 
 def multihead_attention(Q, K, V, WQ, WK, WV, WO, mask):
@@ -392,7 +367,7 @@ def create_illegal_connections_mask(seq_len):
     return ~jnp.tri(seq_len, seq_len, k=0, dtype=jnp.bool_)
 
 
-def create_masks(src_token_ids, trg_token_ids, pad_idx, eps=-jnp.inf):
+def create_masks(src_token_ids, trg_token_ids, pad_idx, eps=-1e9):
     trg_seq_len = trg_token_ids.shape[0]
 
     encoder_src_mask = create_pad_mask(src_token_ids, src_token_ids, pad_idx) * eps

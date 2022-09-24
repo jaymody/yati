@@ -32,19 +32,19 @@ def softmax(x):
 ################################
 def create_positional_embeddings(seq_len: int, d_model: int):
     def create_positional_embedding(d_model: int, pos: int):
-        # TODO: do we start indexing at 0 or 1, I'm assuming it's implied as 1 by the paper
-        # since we are using mathematical notation (not that it will make a difference
-        # anyways, but it does change the result of the equation slightly)
+        # NOTE: we start indexing 2i and pos from 0 instead of from 1, this shouldn't
+        # make a difference (just shifts the curves one dim over)
 
-        odd_indices = jnp.arange(2, d_model + 1, 2)
-        even_indices = jnp.arange(1, d_model + 1, 2)
+        odd_indices = jnp.arange(1, d_model, 2)
+        even_indices = jnp.arange(0, d_model, 2)
 
+        # div_term = jnp.power(10000, (even_indices)
         positional_embedding = jnp.empty((d_model,))
-        positional_embedding = positional_embedding.at[odd_indices - 1].set(
-            jnp.cos(pos / jnp.power(10000, 2 * odd_indices / d_model))
+        positional_embedding = positional_embedding.at[odd_indices].set(
+            jnp.cos(pos / jnp.power(10000, even_indices / d_model))
         )
-        positional_embedding = positional_embedding.at[even_indices - 1].set(
-            jnp.sin(pos / jnp.power(10000, 2 * even_indices / d_model))
+        positional_embedding = positional_embedding.at[even_indices].set(
+            jnp.sin(pos / jnp.power(10000, even_indices / d_model))
         )
 
         # output -> (d_model)

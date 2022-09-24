@@ -7,6 +7,7 @@ from model import (
     transformer_forward_fn,
 )
 from utils import (
+    PAD_index,
     create_unsorted_sorted_char_pairs,
     load_wmt_2014_pairs,
     train_tokenizer,
@@ -31,13 +32,13 @@ model_kwargs_for_size = {
 
 
 @jax.jit
-def forward_fn_batched(src_token_ids, trg_token_ids, params_dict):
+def forward_fn_batched(src_token_ids, trg_token_ids, params_dict, pad_idx):
     # src_token_ids -> (batch_size, src_seq_len)
     # trg_token_ids -> (batch_size, trg_seq_len)
     # params_dict -> dict of params
     # output -> (batch_size, trg_seq_len, vocab_size)
     return jax.vmap(
-        transformer_forward_fn, in_axes=(0, 0, None, None, None, None, None)
+        transformer_forward_fn, in_axes=(0, 0, None, None, None, None, None, None)
     )(
         src_token_ids,
         trg_token_ids,
@@ -46,17 +47,18 @@ def forward_fn_batched(src_token_ids, trg_token_ids, params_dict):
         params_dict["encoder_stack"],
         params_dict["decoder_stack"],
         params_dict["shared_weight_matrix"].T,
+        pad_idx,
     )
 
 
 @jax.jit
-def loss_fn(src_token_ids, trg_token_ids, params_dict):
+def loss_fn(src_token_ids, trg_token_ids, params_dict, pad_idx):
     # src_token_ids -> (batch_size, src_seq_len)
     # trg_token_ids -> (batch_size, trg_seq_len)
     # params_dict -> dict of params
     # output -> loss as a scalar
     next_token_probabilities = forward_fn_batched(
-        src_token_ids, trg_token_ids, params_dict
+        src_token_ids, trg_token_ids, params_dict, pad_idx
     )
 
     # cross entropy loss
@@ -66,9 +68,9 @@ def loss_fn(src_token_ids, trg_token_ids, params_dict):
 
 
 @jax.jit
-def loss_and_grad_fn_jitted(src_token_ids, trg_token_ids, params_dict):
+def loss_and_grad_fn_jitted(src_token_ids, trg_token_ids, params_dict, pad_idx):
     return jax.value_and_grad(loss_fn, argnums=2)(
-        src_token_ids, trg_token_ids, params_dict
+        src_token_ids, trg_token_ids, params_dict, pad_idx
     )
 
 
@@ -80,33 +82,58 @@ def update_step(params_dict, grad, lr):
     return jax.tree_util.tree_map(lambda w, g: w - lr * g, params_dict, grad)
 
 
-def data_iterator(pairs, src_tokenizer, trg_tokenizer, batch_size):
+def pad_token_ids(token_ids, max_seq_len: int, pad_idx: int):
+    # token_ids -> (seq_len)
+    # output -> (max_seq_len)
+    seq_len = token_ids.shape[0]
+    assert seq_len <= max_seq_len
+    return jnp.pad(
+        token_ids,
+        (0, max_seq_len - seq_len),
+        mode="constant",
+        constant_values=pad_idx,
+    )
+
+
+def encode_and_pad(texts, tokenizer, max_seq_len, pad_index):
+    # texts -> list of strings
+    # output -> (batch_size, max_seq_len)
+    return jnp.array(
+        [
+            pad_token_ids(jnp.array(enc.ids), max_seq_len, pad_index)
+            for enc in tokenizer.encode_batch(texts)
+        ]
+    )
+
+
+def data_iterator(
+    pairs, src_tokenizer, trg_tokenizer, batch_size, max_seq_len, drop_last
+):
     src_texts, trg_texts = zip(*pairs)
 
-    src_token_ids = [enc.ids for enc in src_tokenizer.encode_batch(src_texts)]
-    trg_token_ids = [enc.ids for enc in trg_tokenizer.encode_batch(trg_texts)]
+    src_token_ids = encode_and_pad(src_texts, src_tokenizer, max_seq_len, PAD_index)
+    trg_token_ids = encode_and_pad(trg_texts, trg_tokenizer, max_seq_len, PAD_index)
 
-    # TODO: implement batching (requires pad mask)
-    # for i in range(0, len(src_token_ids), batch_size):
-    #     src_token_ids_batch = jnp.array(src_token_ids[i : i + batch_size])
-    #     trg_token_ids_batch = jnp.array(trg_token_ids[i : i + batch_size])
+    for i in range(0, len(src_token_ids), batch_size):
+        if drop_last and i + batch_size > len(src_token_ids):
+            break
 
-    #     yield src_token_ids_batch, trg_token_ids_batch
+        src_token_ids_batch = jnp.array(src_token_ids[i : i + batch_size])
+        trg_token_ids_batch = jnp.array(trg_token_ids[i : i + batch_size])
 
-    for i in range(len(src_token_ids)):
-        yield jnp.array(src_token_ids[i]), jnp.array(trg_token_ids[i])
+        yield src_token_ids_batch, trg_token_ids_batch
 
 
-def predict_data_iterator(src_texts, src_tokenizer, batch_size):
-    src_token_ids = [enc.ids for enc in src_tokenizer.encode_batch(src_texts)]
+def predict_data_iterator(src_texts, src_tokenizer, batch_size, max_seq_len, drop_last):
+    src_token_ids = encode_and_pad(src_texts, src_tokenizer, max_seq_len, PAD_index)
 
-    # TODO: implement batching (requires pad mask)
-    # for i in range(0, len(src_token_ids), batch_size):
-    #     src_token_ids_batch = jnp.array(src_token_ids[i : i + batch_size])
-    #     yield src_token_ids_batch
+    for i in range(0, len(src_token_ids), batch_size):
+        if drop_last and i + batch_size > len(src_token_ids):
+            break
 
-    for i in range(len(src_token_ids)):
-        yield jnp.array(src_token_ids[i])
+        src_token_ids_batch = jnp.array(src_token_ids[i : i + batch_size])
+
+        yield src_token_ids_batch
 
 
 def train(
@@ -116,6 +143,7 @@ def train(
     src_tokenizer: Tokenizer,
     trg_tokenizer: Tokenizer,
     params_dict: dict,
+    max_seq_len: int,
     train_batch_size: int = 128,
     val_batch_size: int = 256,
     test_batch_size: int = 256,
@@ -130,12 +158,13 @@ def train(
             src_tokenizer,
             trg_tokenizer,
             train_batch_size,
+            max_seq_len,
+            drop_last=True,
         ):
-            # TODO: implement batching
             train_loss, grad = loss_and_grad_fn_jitted(
-                src_token_ids, trg_token_ids, params_dict
+                src_token_ids, trg_token_ids, params_dict, PAD_index
             )
-            grad = clip_gradients(grad, -1.0, 1.0)
+            # grad = clip_gradients(grad, -1.0, 1.0)
             params_dict = update_step(params_dict, grad, lr)
             print(f"train_loss = {train_loss}")
 
@@ -145,8 +174,10 @@ def train(
             src_tokenizer,
             trg_tokenizer,
             val_batch_size,
+            max_seq_len,
+            drop_last=True,
         ):
-            val_loss = loss_fn(src_token_ids, trg_token_ids, params_dict)
+            val_loss = loss_fn(src_token_ids, trg_token_ids, params_dict, PAD_index)
             print(f"val_loss = {val_loss}")
 
     # test step
@@ -157,6 +188,7 @@ def train_wmt2014(
     trg_lang: str = "de",
     tokenizer_type: str = "bpe",
     vocab_size: int = 32000,
+    max_seq_len: int = 256,  # TODO: change this after doing EDA on the dataset
     train_batch_size: int = 128,
     val_batch_size: int = 256,
     test_batch_size: int = 256,
@@ -196,6 +228,7 @@ def train_wmt2014(
         src_tokenizer=tokenizer,
         trg_tokenizer=tokenizer,
         params_dict=params_dict,
+        max_seq_len=max_seq_len,
         train_batch_size=train_batch_size,
         val_batch_size=val_batch_size,
         test_batch_size=test_batch_size,
@@ -205,6 +238,7 @@ def train_wmt2014(
 
 
 def train_charsort(
+    max_seq_len: int = 22,
     train_batch_size: int = 128,
     val_batch_size: int = 256,
     test_batch_size: int = 256,
@@ -218,9 +252,9 @@ def train_charsort(
     n_test_pairs = 100 if fast_dev_run else 20000
 
     # get data
-    train_pairs = create_unsorted_sorted_char_pairs(n_train_pairs, 5, 20, 123)
-    val_pairs = create_unsorted_sorted_char_pairs(n_val_pairs, 5, 20, 123)
-    test_pairs = create_unsorted_sorted_char_pairs(n_test_pairs, 5, 20, 123)
+    train_pairs = create_unsorted_sorted_char_pairs(n_train_pairs, 5, 20, seed)
+    val_pairs = create_unsorted_sorted_char_pairs(n_val_pairs, 5, 20, seed)
+    test_pairs = create_unsorted_sorted_char_pairs(n_test_pairs, 5, 20, seed)
 
     # we used a shared tokenizer between src and trg, but only train it on the
     # train pairs (if val and test has a token that is not learned from train pairs
@@ -245,6 +279,7 @@ def train_charsort(
         src_tokenizer=tokenizer,
         trg_tokenizer=tokenizer,
         params_dict=params_dict,
+        max_seq_len=max_seq_len,
         train_batch_size=train_batch_size,
         val_batch_size=val_batch_size,
         test_batch_size=test_batch_size,
@@ -257,4 +292,4 @@ if __name__ == "__main__":
     from jax.config import config
 
     config.update("jax_debug_nans", True)
-    train_charsort(fast_dev_run=True)
+    train_charsort(fast_dev_run=False)

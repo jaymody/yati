@@ -319,8 +319,8 @@ def encoder_layer(
     position_wise_ffn_params,
     layer_norm2_params,
 ):
-    # X -> (seq_len, d_model)
-    # output -> (seq_len, d_model)
+    # X -> (src_seq_len, d_model)
+    # output -> (src_seq_len, d_model)
 
     # multihead attention
     prev = X
@@ -349,8 +349,8 @@ def decoder_layer(
     position_wise_ffn_params,
     layer_norm3_params,
 ):
-    # X -> (seq_len, d_model)
-    # Z -> (seq_len, d_model) which is the encoder outputs
+    # X -> (trg_seq_len, d_model)
+    # Z -> (src_seq_len, d_model) which is the encoder outputs
     # trg_mask -> (seq_len, seq_len) which is the mask for the first attn block
     # src_mask -> (seq_len, seq_len) which is the mask for the second attn block
     # output -> (seq_len, d_model)
@@ -380,10 +380,11 @@ def decoder_layer(
 ################################
 ###### Masking Functions #######
 ################################
-def create_pad_mask(x, pad_idx):
-    # x -> (seq_len)
-    # output -> (seq_len, seq_len), positions that are True are to be masked out
-    return (x == pad_idx).reshape(1, -1) | (x == pad_idx).reshape(-1, 1)
+def create_pad_mask(x, y, pad_idx):
+    # x -> (x_seq_len)
+    # y -> (y_seq_len)
+    # output -> (y_seq_len, x_seq_len), positions that are True are to be masked out
+    return (x == pad_idx).reshape(1, -1) | (y == pad_idx).reshape(-1, 1)
 
 
 def create_illegal_connections_mask(seq_len):
@@ -391,22 +392,22 @@ def create_illegal_connections_mask(seq_len):
     return ~jnp.tri(seq_len, seq_len, k=0, dtype=jnp.bool_)
 
 
-def create_mask(x, pad_idx):
-    # x -> (seq_len)
-    # output -> (seq_len, seq_len), positions that are True are to be masked out
-    return create_pad_mask(x, pad_idx) | create_illegal_connections_mask(x.shape[0])
+def create_masks(src_token_ids, trg_token_ids, pad_idx, eps=-jnp.inf):
+    trg_seq_len = trg_token_ids.shape[0]
+
+    encoder_src_mask = create_pad_mask(src_token_ids, src_token_ids, pad_idx) * eps
+    decoder_src_mask = create_pad_mask(src_token_ids, trg_token_ids, pad_idx) * eps
+    decoder_trg_mask = (
+        create_pad_mask(trg_token_ids, trg_token_ids, pad_idx)
+        | create_illegal_connections_mask(trg_seq_len)
+    ) * eps
+    return encoder_src_mask, decoder_src_mask, decoder_trg_mask
 
 
 ################################
 ######### Transformer ##########
 ################################
-def encoder(src_token_ids, src_embeddings_table, encoder_stack):
-    src_seq_len = src_token_ids.shape[0]
-
-    # (src_seq_len, src_seq_len)
-    # TODO: pad masking, also maybe this should only be done once between enc and dec?
-    src_mask = jnp.zeros((src_seq_len, src_seq_len))
-
+def encoder(src_token_ids, src_mask, src_embeddings_table, encoder_stack):
     # (src_seq_len) -> (src_seq_len, d_model)
     src_embeddings = embedding_lookup(src_token_ids, src_embeddings_table)
 
@@ -425,18 +426,14 @@ def encoder(src_token_ids, src_embeddings_table, encoder_stack):
 
 
 def decoder(
-    trg_token_ids, Z, trg_embeddings_table, decoder_stack, final_linear_layer_matrix
+    trg_token_ids,
+    Z,
+    src_mask,
+    trg_mask,
+    trg_embeddings_table,
+    decoder_stack,
+    final_linear_layer_matrix,
 ):
-    src_seq_len = Z.shape[0]
-    trg_seq_len = trg_token_ids.shape[0]
-
-    # (src_seq_len, src_seq_len)
-    # TODO: pad masking, also maybe this should only be done once between enc and dec?
-    src_mask = jnp.zeros((trg_seq_len, src_seq_len))
-
-    # (trg_seq_len, trg_seq_len)
-    trg_mask = create_illegal_connections_mask(seq_len=trg_seq_len) * -jnp.inf
-
     # (trg_seq_len) -> (trg_seq_len, d_model)
     trg_embeddings = embedding_lookup(trg_token_ids, trg_embeddings_table)
 
@@ -467,64 +464,86 @@ def transformer_forward_fn(
     encoder_stack,
     decoder_stack,
     final_linear_layer_matrix,
+    pad_idx,
 ):
+    # TODO: maybe the caller should be responsible for creating the masks?
+    encoder_src_mask, decoder_src_mask, decoder_trg_mask = create_masks(
+        src_token_ids, trg_token_ids, pad_idx
+    )
     Z = encoder(
-        src_token_ids,
-        src_embeddings_table,
-        encoder_stack,
+        src_token_ids=src_token_ids,
+        src_mask=encoder_src_mask,
+        src_embeddings_table=src_embeddings_table,
+        encoder_stack=encoder_stack,
     )
     next_token_probabilities = decoder(
-        trg_token_ids,
-        Z,
-        trg_embeddings_table,
-        decoder_stack,
-        final_linear_layer_matrix,
+        trg_token_ids=trg_token_ids,
+        Z=Z,
+        src_mask=decoder_src_mask,
+        trg_mask=decoder_trg_mask,
+        trg_embeddings_table=trg_embeddings_table,
+        decoder_stack=decoder_stack,
+        final_linear_layer_matrix=final_linear_layer_matrix,
     )
     return next_token_probabilities
 
 
 def transformer_predict_fn(
     src_token_ids,
-    sos_idx,
     max_sequence_length,
     src_embeddings_table,
     trg_embeddings_table,
     encoder_stack,
     decoder_stack,
     final_linear_layer_matrix,
+    sos_idx,
+    pad_idx,
 ):
     # encoder forward pass
-    Z = encoder(src_token_ids, src_embeddings_table, encoder_stack)
+    encoder_src_mask, _, _ = create_masks(src_token_ids, src_token_ids, pad_idx)
+    Z = encoder(
+        src_token_ids=src_token_ids,
+        src_mask=encoder_src_mask,
+        src_embeddings_table=src_embeddings_table,
+        encoder_stack=encoder_stack,
+    )
 
     # iterative decode
     # start with just [sos_idx] as the decoder input, each step add the token with the
     # highest predicted next token probability to the decoder input and repeat until a
     # sequence of length max_sequence_length is constructed
     trg_vocab_size = trg_embeddings_table.shape[0]
-    trg_token_ids = jnp.array([sos_idx])
+    trg_token_ids = jnp.ones(max_sequence_length, dtype=jnp.int32) * pad_idx
+    trg_token_ids = trg_token_ids.at[0].set(sos_idx)
     logits = jnp.empty((max_sequence_length, trg_vocab_size))
     for i in range(max_sequence_length):
         # decoder forward pass
-        probabilities = decoder(
-            trg_token_ids,
-            Z,
-            trg_embeddings_table,
-            decoder_stack,
-            final_linear_layer_matrix,
+        _, decoder_src_mask, decoder_trg_mask = create_masks(
+            src_token_ids, trg_token_ids, pad_idx
+        )
+        next_token_probabilities = decoder(
+            trg_token_ids=trg_token_ids,
+            Z=Z,
+            src_mask=decoder_src_mask,
+            trg_mask=decoder_trg_mask,
+            trg_embeddings_table=trg_embeddings_table,
+            decoder_stack=decoder_stack,
+            final_linear_layer_matrix=final_linear_layer_matrix,
         )
 
         # next_token_probability_distribution[i] = probability the next token is i
-        next_token_probability_distribution = probabilities[-1]
-
-        # token idx of the token that has the highest probability of being next
-        predicted_next_token_idx = jnp.argmax(next_token_probability_distribution)
+        next_token_probability_distribution = next_token_probabilities[-1]
 
         # append probability dist to logits so we can return it to the caller
         logits = logits.at[i].set(next_token_probability_distribution)
 
+        # token idx of the token that has the highest probability of being next
+        predicted_next_token_idx = jnp.argmax(next_token_probability_distribution)
+
         # append the predict next token to the decoder input for the next iteration
-        trg_token_ids = jnp.concatenate(
-            [trg_token_ids, jnp.array([predicted_next_token_idx])]
-        )
+        trg_token_ids = trg_token_ids.at[i + 1].set(predicted_next_token_idx)
+
+        # TODO: figure how to end early if predicted_next_token_idx == eos_idx
+        # in a way that works with jit
 
     return logits

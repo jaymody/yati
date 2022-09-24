@@ -76,6 +76,7 @@ def test_initialization_forward_fn_and_predict_fn():
         src_token_ids=jnp.array([11, 10, 90, 7, 101]),
         trg_token_ids=jnp.array([254, 6, 10, 40, 105, 10, 43]),
         **params,
+        pad_idx=0,
     )
     print(logits.shape)
 
@@ -84,6 +85,7 @@ def test_initialization_forward_fn_and_predict_fn():
         **params,
         sos_idx=1,
         max_sequence_length=10,
+        pad_idx=0,
     )
     print(jnp.argmax(logits, axis=-1))
 

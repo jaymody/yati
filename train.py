@@ -30,30 +30,54 @@ model_kwargs_for_size = {
 }
 
 
-def categorical_cross_entropy(probabilities, target):
-    return -jnp.log(probabilities[target])
-
-
-def loss_fn(src_token_ids, trg_token_ids, params_dict):
-    next_token_probabilities = transformer_forward_fn(
-        src_token_ids=src_token_ids,
-        trg_token_ids=trg_token_ids,
-        src_embeddings_table=params_dict["shared_weight_matrix"],
-        trg_embeddings_table=params_dict["shared_weight_matrix"],
-        encoder_stack=params_dict["encoder_stack"],
-        decoder_stack=params_dict["decoder_stack"],
-        final_linear_layer_matrix=params_dict["shared_weight_matrix"].T,
+@jax.jit
+def forward_fn_batched(src_token_ids, trg_token_ids, params_dict):
+    # src_token_ids -> (batch_size, src_seq_len)
+    # trg_token_ids -> (batch_size, trg_seq_len)
+    # params_dict -> dict of params
+    # output -> (batch_size, trg_seq_len, vocab_size)
+    return jax.vmap(
+        transformer_forward_fn, in_axes=(0, 0, None, None, None, None, None)
+    )(
+        src_token_ids,
+        trg_token_ids,
+        params_dict["shared_weight_matrix"],
+        params_dict["shared_weight_matrix"],
+        params_dict["encoder_stack"],
+        params_dict["decoder_stack"],
+        params_dict["shared_weight_matrix"].T,
     )
-    loss = jnp.array(0)
-    for i in range(len(next_token_probabilities) - 1):
-        loss = loss + categorical_cross_entropy(
-            next_token_probabilities[i], trg_token_ids[i + 1]
-        )
-    return loss / (len(next_token_probabilities) - 1)
 
 
-def update_step(lr, grad, params_dict):
-    return jax.tree_util.tree_map(lambda w, g: w - g * lr, params_dict, grad)
+@jax.jit
+def loss_fn(src_token_ids, trg_token_ids, params_dict):
+    # src_token_ids -> (batch_size, src_seq_len)
+    # trg_token_ids -> (batch_size, trg_seq_len)
+    # params_dict -> dict of params
+    # output -> loss as a scalar
+    next_token_probabilities = forward_fn_batched(
+        src_token_ids, trg_token_ids, params_dict
+    )
+
+    # cross entropy loss
+    logits = next_token_probabilities[:, :-1, :]
+    labels = jax.nn.one_hot(trg_token_ids[:, 1:], logits.shape[-1])
+    return jnp.mean(jnp.sum(labels * -jnp.log(logits), axis=-1))
+
+
+@jax.jit
+def loss_and_grad_fn_jitted(src_token_ids, trg_token_ids, params_dict):
+    return jax.value_and_grad(loss_fn, argnums=2)(
+        src_token_ids, trg_token_ids, params_dict
+    )
+
+
+def clip_gradients(grad, min_val, max_val):
+    return jax.tree_util.tree_map(lambda x: jnp.clip(x, min_val, max_val), grad)
+
+
+def update_step(params_dict, grad, lr):
+    return jax.tree_util.tree_map(lambda w, g: w - lr * g, params_dict, grad)
 
 
 def data_iterator(pairs, src_tokenizer, trg_tokenizer, batch_size):
@@ -108,13 +132,11 @@ def train(
             train_batch_size,
         ):
             # TODO: implement batching
-            train_loss, grad = jax.value_and_grad(loss_fn, argnums=2)(
-                src_token_ids,
-                trg_token_ids,
-                params_dict,
+            train_loss, grad = loss_and_grad_fn_jitted(
+                src_token_ids, trg_token_ids, params_dict
             )
-
-            params_dict = update_step(lr, grad, params_dict)
+            grad = clip_gradients(grad, -1.0, 1.0)
+            params_dict = update_step(params_dict, grad, lr)
             print(f"train_loss = {train_loss}")
 
         # validation step

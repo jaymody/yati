@@ -2,12 +2,32 @@ import jax
 import jax.numpy as jnp
 from tokenizers import Tokenizer
 
-from model import initialize_transformer_params, transformer_forward_fn
+from model import (
+    initialize_transformer_params_with_shared_weight_matrix,
+    transformer_forward_fn,
+)
 from utils import (
     create_unsorted_sorted_char_pairs,
     load_wmt_2014_pairs,
     train_tokenizer,
 )
+
+model_kwargs_for_size = {
+    "base": {
+        "d_model": 512,
+        "d_ff": 2048,
+        "h": 8,
+        "n_enc_layers": 6,
+        "n_dec_layers": 6,
+    },
+    "tiny": {
+        "d_model": 128,
+        "d_ff": 512,
+        "h": 4,
+        "n_enc_layers": 3,
+        "n_dec_layers": 3,
+    },
+}
 
 
 def categorical_cross_entropy(probabilities, target):
@@ -16,9 +36,13 @@ def categorical_cross_entropy(probabilities, target):
 
 def loss_fn(src_token_ids, trg_token_ids, params_dict):
     next_token_probabilities = transformer_forward_fn(
-        src_token_ids,
-        trg_token_ids,
-        **params_dict,
+        src_token_ids=src_token_ids,
+        trg_token_ids=trg_token_ids,
+        src_embeddings_table=params_dict["shared_weight_matrix"],
+        trg_embeddings_table=params_dict["shared_weight_matrix"],
+        encoder_stack=params_dict["encoder_stack"],
+        decoder_stack=params_dict["decoder_stack"],
+        final_linear_layer_matrix=params_dict["shared_weight_matrix"].T,
     )
     loss = jnp.array(0)
     for i in range(len(next_token_probabilities) - 1):
@@ -59,39 +83,6 @@ def predict_data_iterator(src_texts, src_tokenizer, batch_size):
 
     for i in range(len(src_token_ids)):
         yield jnp.array(src_token_ids[i])
-
-
-def get_transformer_model(
-    size: str,
-    seed: int,
-    src_vocab_size: int,
-    trg_vocab_size: int,
-    shared_embeddings: bool,
-):
-    model_kwargs_for_size = {
-        "base": {
-            "d_model": 512,
-            "d_ff": 2048,
-            "h": 8,
-            "n_enc_layers": 6,
-            "n_dec_layers": 6,
-        },
-        "tiny": {
-            "d_model": 128,
-            "d_ff": 512,
-            "h": 4,
-            "n_enc_layers": 3,
-            "n_dec_layers": 3,
-        },
-    }
-
-    return initialize_transformer_params(
-        seed=seed,
-        src_vocab_size=src_vocab_size,
-        trg_vocab_size=trg_vocab_size,
-        shared_embeddings=shared_embeddings,
-        **model_kwargs_for_size[size],
-    )
 
 
 def train(
@@ -170,7 +161,11 @@ def train_wmt2014(
         vocab_size=vocab_size,
     )
 
-    params_dict = get_transformer_model("base", seed, vocab_size, vocab_size)
+    params_dict = initialize_transformer_params_with_shared_weight_matrix(
+        seed=seed,
+        vocab_size=vocab_size,
+        **model_kwargs_for_size["tiny" if fast_dev_run else "base"],
+    )
 
     train(
         train_pairs=train_pairs,
@@ -215,7 +210,11 @@ def train_charsort(
     )
     vocab_size = tokenizer.get_vocab_size()
 
-    params_dict = get_transformer_model("tiny", seed, vocab_size, vocab_size)
+    params_dict = initialize_transformer_params_with_shared_weight_matrix(
+        seed=seed,
+        vocab_size=vocab_size,
+        **model_kwargs_for_size["tiny" if fast_dev_run else "base"],
+    )
 
     train(
         train_pairs=train_pairs,

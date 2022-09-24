@@ -97,19 +97,19 @@ def position_wise_ffn(X, W1, b1, W2, b2):
     return jax.vmap(ffn, (0, None, None, None, None), 0)(X, W1, b1, W2, b2)
 
 
-def final_linear_layer(X, W, b):
+def final_linear_layer(X, final_linear_layer_matrix):
     # X -> (trg_seq_len, d_model)
     # W -> (d_model, trg_vocab_size)
     # b -> (trg_vocab_size)
 
     # output -> (trg_seq_len, trg_vocab_size)
 
-    def ffn(x, W, b):
+    def ffn(x, final_linear_layer_matrix):
         # x -> (d_model)
         # output -> (trg_vocab_size)
-        return softmax(x @ W + b)
+        return softmax(x @ final_linear_layer_matrix)
 
-    return jax.vmap(ffn, (0, None, None), 0)(X, W, b)
+    return jax.vmap(ffn, (0, None), 0)(X, final_linear_layer_matrix)
 
 
 def scaled_dot_product_attention(Q, K, V, mask):
@@ -160,12 +160,6 @@ def xavier_init(key, shape, gain: float = 1.0):
     return a * jax.random.normal(key, shape)
 
 
-def initialize_embedding_lookup_table(key, n: int, d: int):
-    # n -> number of embeddings to create
-    # d -> dimension of each embedding
-    return jax.random.normal(key, (n, d))
-
-
 def initialize_layer_norm_params(d_model: int):
     return {"gamma": jnp.ones((d_model,)), "beta": jnp.zeros((d_model,))}
 
@@ -178,13 +172,6 @@ def initialize_position_wise_ffn_params(key, d_model: int, d_ff: int):
         "b1": jnp.zeros((d_ff,)),
         "W2": xavier_init(W2_subkey, (d_ff, d_model)),
         "b2": jnp.zeros((d_model,)),
-    }
-
-
-def initialize_final_linear_layer_params(key, d_model: int, trg_vocab_size: int):
-    return {
-        "W": xavier_init(key, (d_model, trg_vocab_size)),
-        "b": jnp.zeros((trg_vocab_size,)),
     }
 
 
@@ -268,7 +255,6 @@ def initialize_transformer_params(
     h,
     n_enc_layers,
     n_dec_layers,
-    shared_embeddings,
 ):
     key = jax.random.PRNGKey(seed)
     key, src_embedding_key = jax.random.split(key)
@@ -278,18 +264,9 @@ def initialize_transformer_params(
     key, *dec_keys = jax.random.split(key, n_dec_layers + 1)
     final_layer_key = key
 
-    src_embeddings_table = initialize_embedding_lookup_table(
-        src_embedding_key, src_vocab_size, d_model
-    )
+    src_embeddings_table = xavier_init(src_embedding_key, (src_vocab_size, d_model))
 
-    # TODO: does this actually work as intended? I don't think so ...
-    if shared_embeddings:
-        assert src_vocab_size == trg_vocab_size
-        trg_embeddings_table = src_embeddings_table
-    else:
-        trg_embeddings_table = initialize_embedding_lookup_table(
-            trg_embedding_key, trg_vocab_size, d_model
-        )
+    trg_embeddings_table = xavier_init(trg_embedding_key, (trg_vocab_size, d_model))
 
     encoder_stack = [
         initialize_encoder_layer(enc_keys[i], d_model, d_ff, h)
@@ -301,16 +278,40 @@ def initialize_transformer_params(
         for i in range(n_dec_layers)
     ]
 
-    final_linear_layer_params = initialize_final_linear_layer_params(
-        final_layer_key, d_model, trg_vocab_size
-    )
+    final_linear_layer_matrix = xavier_init(final_layer_key, (d_model, trg_vocab_size))
+
     return {
         "src_embeddings_table": src_embeddings_table,
         "trg_embeddings_table": trg_embeddings_table,
         "encoder_stack": encoder_stack,
         "decoder_stack": decoder_stack,
-        "final_linear_layer_params": final_linear_layer_params,
+        "final_linear_layer_matrix": final_linear_layer_matrix,
     }
+
+
+def initialize_transformer_params_with_shared_weight_matrix(
+    seed,
+    vocab_size,
+    d_model,
+    d_ff,
+    h,
+    n_enc_layers,
+    n_dec_layers,
+):
+    params_dict = initialize_transformer_params(
+        seed=seed,
+        src_vocab_size=vocab_size,
+        trg_vocab_size=vocab_size,
+        d_model=d_model,
+        d_ff=d_ff,
+        h=h,
+        n_enc_layers=n_enc_layers,
+        n_dec_layers=n_dec_layers,
+    )
+    del params_dict["trg_embeddings_table"]
+    del params_dict["final_linear_layer_matrix"]
+    params_dict["shared_weight_matrix"] = params_dict.pop("src_embeddings_table")
+    return params_dict
 
 
 ################################
@@ -428,7 +429,7 @@ def encoder(src_token_ids, src_embeddings_table, encoder_stack):
 
 
 def decoder(
-    trg_token_ids, Z, trg_embeddings_table, decoder_stack, final_linear_layer_params
+    trg_token_ids, Z, trg_embeddings_table, decoder_stack, final_linear_layer_matrix
 ):
     src_seq_len = Z.shape[0]
     trg_seq_len = trg_token_ids.shape[0]
@@ -454,7 +455,7 @@ def decoder(
         )
 
     # (trg_seq_len, d_model) -> (trg_seq_len, trg_vocab_size)
-    next_token_probabilities = final_linear_layer(X, **final_linear_layer_params)
+    next_token_probabilities = final_linear_layer(X, final_linear_layer_matrix)
 
     # (trg_seq_len, trg_vocab_size)
     return next_token_probabilities
@@ -467,7 +468,7 @@ def transformer_forward_fn(
     trg_embeddings_table,
     encoder_stack,
     decoder_stack,
-    final_linear_layer_params,
+    final_linear_layer_matrix,
 ):
     Z = encoder(
         src_token_ids,
@@ -479,7 +480,7 @@ def transformer_forward_fn(
         Z,
         trg_embeddings_table,
         decoder_stack,
-        final_linear_layer_params,
+        final_linear_layer_matrix,
     )
     return next_token_probabilities
 
@@ -492,7 +493,7 @@ def transformer_predict_fn(
     trg_embeddings_table,
     encoder_stack,
     decoder_stack,
-    final_linear_layer_params,
+    final_linear_layer_matrix,
 ):
     # encoder forward pass
     Z = encoder(src_token_ids, src_embeddings_table, encoder_stack)
@@ -511,7 +512,7 @@ def transformer_predict_fn(
             Z,
             trg_embeddings_table,
             decoder_stack,
-            final_linear_layer_params,
+            final_linear_layer_matrix,
         )
 
         # next_token_probability_distribution[i] = probability the next token is i

@@ -48,7 +48,6 @@ def test_initialization_is_random():
         h=2,
         n_enc_layers=3,
         n_dec_layers=3,
-        shared_embeddings=False,
     )
     weights_flattened = jnp.array(flatten_and_concat(weights))
     num_params = weights_flattened.shape[0]
@@ -71,7 +70,6 @@ def test_initialization_forward_fn_and_predict_fn():
         h=8,
         n_enc_layers=6,
         n_dec_layers=6,
-        shared_embeddings=False,
     )
 
     logits = transformer_forward_fn(

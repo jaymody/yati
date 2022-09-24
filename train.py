@@ -238,7 +238,8 @@ def train_wmt2014(
 
 
 def train_charsort(
-    max_seq_len: int = 22,
+    min_length: int = 5,
+    max_length: int = 22,
     train_batch_size: int = 128,
     val_batch_size: int = 256,
     test_batch_size: int = 256,
@@ -252,9 +253,15 @@ def train_charsort(
     n_test_pairs = 100 if fast_dev_run else 20000
 
     # get data
-    train_pairs = create_unsorted_sorted_char_pairs(n_train_pairs, 5, 20, seed)
-    val_pairs = create_unsorted_sorted_char_pairs(n_val_pairs, 5, 20, seed)
-    test_pairs = create_unsorted_sorted_char_pairs(n_test_pairs, 5, 20, seed)
+    train_pairs = create_unsorted_sorted_char_pairs(
+        n_train_pairs, min_length, max_length, seed
+    )
+    val_pairs = create_unsorted_sorted_char_pairs(
+        n_val_pairs, min_length, max_length, seed
+    )
+    test_pairs = create_unsorted_sorted_char_pairs(
+        n_test_pairs, min_length, max_length, seed
+    )
 
     # we used a shared tokenizer between src and trg, but only train it on the
     # train pairs (if val and test has a token that is not learned from train pairs
@@ -279,7 +286,7 @@ def train_charsort(
         src_tokenizer=tokenizer,
         trg_tokenizer=tokenizer,
         params_dict=params_dict,
-        max_seq_len=max_seq_len,
+        max_seq_len=max_length + 2,  # + 2 for SOS and EOS tokens
         train_batch_size=train_batch_size,
         val_batch_size=val_batch_size,
         test_batch_size=test_batch_size,

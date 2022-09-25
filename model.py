@@ -53,7 +53,7 @@ def layer_norm(
 def embedding_lookup(
     token_indices: Int[Array, "seq_len"],
     embedding_lookup_table: Float[Array, "vocab_size d_model"],
-):
+) -> Float[Array, "seq_len d_model"]:
     return embedding_lookup_table[token_indices]
 
 

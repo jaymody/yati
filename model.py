@@ -107,11 +107,11 @@ def multihead_attention(
 ################################
 ### Parameter Initialization ###
 ################################
-def xavier_init(key: PRNGKeyType, shape: tuple[int, ...], gain: float = 1.0):
+def xavier_uniform(key: PRNGKeyType, shape: tuple[int, ...], gain: float = 1.0):
     # https://pytorch.org/docs/stable/nn.init.html#torch.nn.init.xavier_uniform_
     assert len(shape) == 2
     a = gain * jnp.sqrt(6.0 / (shape[0] + shape[1]))
-    return a * jax.random.normal(key, shape)
+    return a * jax.random.uniform(key, shape)
 
 
 def initialize_layer_norm_params(d_model: int):
@@ -122,9 +122,9 @@ def initialize_position_wise_ffn_params(key: PRNGKeyType, d_model: int, d_ff: in
     W1_subkey, W2_subkey = jax.random.split(key)
 
     return {
-        "W1": xavier_init(W1_subkey, (d_model, d_ff)),
+        "W1": xavier_uniform(W1_subkey, (d_model, d_ff)),
         "b1": jnp.zeros((d_ff,)),
-        "W2": xavier_init(W2_subkey, (d_ff, d_model)),
+        "W2": xavier_uniform(W2_subkey, (d_ff, d_model)),
         "b2": jnp.zeros((d_model,)),
     }
 
@@ -138,10 +138,16 @@ def initialize_mutlihead_attention_params(
     WO_subkey = key
 
     return {
-        "WQ": jnp.stack([xavier_init(subkey, (d_model, d_k)) for subkey in WQ_subkeys]),
-        "WK": jnp.stack([xavier_init(subkey, (d_model, d_k)) for subkey in WK_subkeys]),
-        "WV": jnp.stack([xavier_init(subkey, (d_model, d_v)) for subkey in WV_subkeys]),
-        "WO": xavier_init(WO_subkey, (h * d_v, d_model)),
+        "WQ": jnp.stack(
+            [xavier_uniform(subkey, (d_model, d_k)) for subkey in WQ_subkeys]
+        ),
+        "WK": jnp.stack(
+            [xavier_uniform(subkey, (d_model, d_k)) for subkey in WK_subkeys]
+        ),
+        "WV": jnp.stack(
+            [xavier_uniform(subkey, (d_model, d_v)) for subkey in WV_subkeys]
+        ),
+        "WO": xavier_uniform(WO_subkey, (h * d_v, d_model)),
     }
 
 
@@ -218,9 +224,9 @@ def initialize_transformer_params(
     key, *dec_keys = jax.random.split(key, n_dec_layers + 1)
     final_layer_key = key
 
-    src_embeddings_table = xavier_init(src_embedding_key, (src_vocab_size, d_model))
+    src_embeddings_table = xavier_uniform(src_embedding_key, (src_vocab_size, d_model))
 
-    trg_embeddings_table = xavier_init(trg_embedding_key, (trg_vocab_size, d_model))
+    trg_embeddings_table = xavier_uniform(trg_embedding_key, (trg_vocab_size, d_model))
 
     encoder_stack = [
         initialize_encoder_layer(enc_keys[i], d_model, d_ff, h)
@@ -232,7 +238,9 @@ def initialize_transformer_params(
         for i in range(n_dec_layers)
     ]
 
-    final_linear_layer_matrix = xavier_init(final_layer_key, (d_model, trg_vocab_size))
+    final_linear_layer_matrix = xavier_uniform(
+        final_layer_key, (d_model, trg_vocab_size)
+    )
 
     return {
         "src_embeddings_table": src_embeddings_table,

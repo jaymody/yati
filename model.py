@@ -219,7 +219,6 @@ def initialize_transformer_params(
     key = jax.random.PRNGKey(seed)
     key, src_embedding_key = jax.random.split(key)
     key, trg_embedding_key = jax.random.split(key)
-    key = jax.random.PRNGKey(seed)
     key, *enc_keys = jax.random.split(key, n_enc_layers + 1)
     key, *dec_keys = jax.random.split(key, n_dec_layers + 1)
     final_layer_key = key

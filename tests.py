@@ -1,11 +1,14 @@
 import jax
 import jax.numpy as jnp
+from jaxtyping import install_import_hook
 
-from model import (
-    initialize_transformer_params,
-    transformer_forward_fn,
-    transformer_predict_fn,
-)
+# enables runtime type checking for any functions that are properly type hinted
+with install_import_hook("model", ("typeguard", "typechecked")):
+    from model import (
+        initialize_transformer_params,
+        transformer_forward_fn,
+        transformer_predict_fn,
+    )
 
 
 def test_initialization_is_random():

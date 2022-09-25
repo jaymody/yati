@@ -1,19 +1,23 @@
 import jax
 import jax.numpy as jnp
+from jaxtyping import Array, Bool, Float, Int, PyTree, UInt
+
+PRNGKeyType = UInt[Array, ""]
 
 
 ################################
 #### Positional Embeddings #####
 ################################
-def create_positional_embeddings(seq_len: int, d_model: int):
-    def create_positional_embedding(d_model: int, pos: int):
+def create_positional_embeddings(
+    seq_len: int, d_model: int
+) -> Float[Array, "seq_len d_model"]:
+    def create_positional_embedding(d_model, pos) -> Float[Array, "d_model"]:
         # NOTE: we start indexing 2i and pos from 0 instead of from 1, this shouldn't
         # make a difference (just shifts the curves one dim over)
 
         odd_indices = jnp.arange(1, d_model, 2)
         even_indices = jnp.arange(0, d_model, 2)
 
-        # div_term = jnp.power(10000, (even_indices)
         positional_embedding = jnp.empty((d_model,))
         positional_embedding = positional_embedding.at[odd_indices].set(
             jnp.cos(pos / jnp.power(10000, even_indices / d_model))
@@ -22,10 +26,8 @@ def create_positional_embeddings(seq_len: int, d_model: int):
             jnp.sin(pos / jnp.power(10000, even_indices / d_model))
         )
 
-        # output -> (d_model)
         return positional_embedding
 
-    # output -> (seq_len, d_model)
     return jax.lax.map(
         lambda pos: create_positional_embedding(d_model, pos), jnp.arange(seq_len)
     )
@@ -34,69 +36,60 @@ def create_positional_embeddings(seq_len: int, d_model: int):
 ################################
 ######### Basic Layers #########
 ################################
-def layer_norm(x, gamma, beta, eps: float = 1e-8):
-    # x -> (d_model)
-    # gamma -> (d_model)
-    # beta -> (d_model)
-    # output -> same shape as x
+def layer_norm(
+    x: Float[Array, "d_model"],
+    gamma: Float[Array, "d_model"],
+    beta: Float[Array, "d_model"],
+    eps: float = 1e-8,
+) -> Float[Array, "d_model"]:
     # https://pytorch.org/docs/stable/generated/torch.nn.LayerNorm.html
     return gamma * (x - jnp.mean(x)) / (jnp.std(x) + eps) + beta
 
 
-def embedding_lookup(token_indices, embedding_lookup_table):
-    # token_indices -> (seq_len) of type int
-    # embedding_lookup_table -> (vocab_size, d_model)
+def embedding_lookup(
+    token_indices: Int[Array, "seq_len"],
+    embedding_lookup_table: Float[Array, "vocab_size d_model"],
+):
     return embedding_lookup_table[token_indices]
 
 
-def position_wise_ffn(X, W1, b1, W2, b2):
-    # X -> (seq_len, d_model)
-    # W1 -> (d_model, d_ff)
-    # b1 -> (d_ff)
-    # W2 -> (d_ff, d_model)
-    # b1 -> (d_model)
-
-    # output -> (seq_len, d_model)
+def position_wise_ffn(
+    X: Float[Array, "seq_len d_model"],
+    W1: Float[Array, "d_model d_ff"],
+    W2: Float[Array, "d_ff d_model"],
+    b1: Float[Array, "d_ff"],
+    b2: Float[Array, "d_model"],
+) -> Float[Array, "seq_len d_model"]:
     return jax.nn.relu(X @ W1 + b1) @ W2 + b2
 
 
-def final_linear_layer(X, final_linear_layer_matrix):
-    # X -> (trg_seq_len, d_model)
-    # W -> (d_model, trg_vocab_size)
-    # b -> (trg_vocab_size)
-
-    # output -> (trg_seq_len, trg_vocab_size)
+def final_linear_layer(
+    X: Float[Array, "seq_len d_model"],
+    final_linear_layer_matrix: Float[Array, "d_model vocab_size"],
+) -> Float[Array, "seq_len vocab_size"]:
     return jax.nn.softmax(X @ final_linear_layer_matrix)
 
 
-def scaled_dot_product_attention(Q, K, V, mask):
-    # Q -> (in_seq_len, d_k)
-    # K -> (out_seq_len, d_k)
-    # V -> (out_seq_len, d_v)
-    # mask -> (in_seq_len, out_seq_len)
-    #   mask[i][j] = -jpn.inf means mask this connection (illegal connection)
-    #   mask[i][j] = 0 means don't mask this connection (valid connection)
-
-    # output -> (out_seq_len, d_v)
-
+def scaled_dot_product_attention(
+    Q: Float[Array, "in_seq_len d_k"],
+    K: Float[Array, "out_seq_len d_k"],
+    V: Float[Array, "out_seq_len d_v"],
+    mask: Float[Array, "in_seq_len out_seq_len"],
+) -> Float[Array, "out_seq_len d_v"]:
     d_k = K.shape[-1]
     return jax.nn.softmax((Q @ K.T / jnp.sqrt(d_k)) + mask) @ V
 
 
-def multihead_attention(Q, K, V, WQ, WK, WV, WO, mask):
-    # Q -> (in_seq_len, d_model)
-    # K -> (out_seq_len, d_model)
-    # V -> (out_seq_len, d_model)
-    # mask -> (in_seq_len, out_seq_len)
-
-    # WQ -> (h, d_model, d_k)
-    # WK -> (h, d_model, d_k)
-    # WV -> (h, d_model, d_v)
-    # WO -> (h * d_v, d_model)
-
-    # h = number of attentions heads
-    # output -> (out_seq_len, d_model)
-
+def multihead_attention(
+    Q: Float[Array, "in_seq_len d_model"],
+    K: Float[Array, "out_seq_len d_model"],
+    V: Float[Array, "out_seq_len d_model"],
+    WQ: Float[Array, "h d_model d_k"],
+    WK: Float[Array, "h d_model d_k"],
+    WV: Float[Array, "h d_model d_v"],
+    WO: Float[Array, "d_model d_model"],  # TODO: should be h*d_v x d_model
+    mask: Float[Array, "in_seq_len out_seq_len"],
+) -> Float[Array, "out_seq_len d_model"]:
     Q = Q @ WQ  # (in_seq_len, d_model) @ (h, d_model, d_k) -> (h, in_seq_len, d_k)
     K = K @ WK  # (in_seq_len, d_model) @ (h, d_model, d_k) -> (h, in_seq_len, d_k)
     V = V @ WV  # (in_seq_len, d_model) @ (h, d_model, d_v) -> (h, in_seq_len, d_v)
@@ -110,7 +103,7 @@ def multihead_attention(Q, K, V, WQ, WK, WV, WO, mask):
 ################################
 ### Parameter Initialization ###
 ################################
-def xavier_init(key, shape, gain: float = 1.0):
+def xavier_init(key: PRNGKeyType, shape: tuple[int, ...], gain: float = 1.0):
     # https://pytorch.org/docs/stable/nn.init.html#torch.nn.init.xavier_uniform_
     assert len(shape) == 2
     a = gain * jnp.sqrt(6.0 / (shape[0] + shape[1]))
@@ -121,7 +114,7 @@ def initialize_layer_norm_params(d_model: int):
     return {"gamma": jnp.ones((d_model,)), "beta": jnp.zeros((d_model,))}
 
 
-def initialize_position_wise_ffn_params(key, d_model: int, d_ff: int):
+def initialize_position_wise_ffn_params(key: PRNGKeyType, d_model: int, d_ff: int):
     W1_subkey, W2_subkey = jax.random.split(key)
 
     return {
@@ -133,7 +126,7 @@ def initialize_position_wise_ffn_params(key, d_model: int, d_ff: int):
 
 
 def initialize_mutlihead_attention_params(
-    key, d_model: int, d_k: int, d_v: int, h: int
+    key: PRNGKeyType, d_model: int, d_k: int, d_v: int, h: int
 ):
     key, *WQ_subkeys = jax.random.split(key, h + 1)
     key, *WK_subkeys = jax.random.split(key, h + 1)
@@ -148,7 +141,7 @@ def initialize_mutlihead_attention_params(
     }
 
 
-def initialize_encoder_layer(key, d_model, d_ff, h):
+def initialize_encoder_layer(key: PRNGKeyType, d_model: int, d_ff: int, h: int):
     subkeys = jax.random.split(key, 2)
 
     multihead_attention_params = initialize_mutlihead_attention_params(
@@ -171,7 +164,7 @@ def initialize_encoder_layer(key, d_model, d_ff, h):
     }
 
 
-def initialize_decoder_layer(key, d_model, d_ff, h):
+def initialize_decoder_layer(key: PRNGKeyType, d_model: int, d_ff: int, h: int):
     subkeys = jax.random.split(key, 3)
 
     multihead_attention_params = initialize_mutlihead_attention_params(
@@ -204,14 +197,14 @@ def initialize_decoder_layer(key, d_model, d_ff, h):
 
 
 def initialize_transformer_params(
-    seed,
-    src_vocab_size,
-    trg_vocab_size,
-    d_model,
-    d_ff,
-    h,
-    n_enc_layers,
-    n_dec_layers,
+    seed: int,
+    src_vocab_size: int,
+    trg_vocab_size: int,
+    d_model: int,
+    d_ff: int,
+    h: int,
+    n_enc_layers: int,
+    n_dec_layers: int,
 ):
     key = jax.random.PRNGKey(seed)
     key, src_embedding_key = jax.random.split(key)
@@ -247,13 +240,13 @@ def initialize_transformer_params(
 
 
 def initialize_transformer_params_with_shared_weight_matrix(
-    seed,
-    vocab_size,
-    d_model,
-    d_ff,
-    h,
-    n_enc_layers,
-    n_dec_layers,
+    seed: int,
+    vocab_size: int,
+    d_model: int,
+    d_ff: int,
+    h: int,
+    n_enc_layers: int,
+    n_dec_layers: int,
 ):
     params_dict = initialize_transformer_params(
         seed=seed,
@@ -275,16 +268,13 @@ def initialize_transformer_params_with_shared_weight_matrix(
 #### Encoder/Decoder Layers ####
 ################################
 def encoder_layer(
-    X,
-    src_mask,
-    multihead_attention_params,
-    layer_norm1_params,
-    position_wise_ffn_params,
-    layer_norm2_params,
-):
-    # X -> (src_seq_len, d_model)
-    # output -> (src_seq_len, d_model)
-
+    X: Float[Array, "src_seq_len d_model"],
+    src_mask: Float[Array, "src_seq_len src_seq_len"],
+    multihead_attention_params: PyTree,
+    layer_norm1_params: PyTree,
+    position_wise_ffn_params: PyTree,
+    layer_norm2_params: PyTree,
+) -> Float[Array, "src_seq_len d_model"]:
     # multihead attention
     prev = X
     out = multihead_attention(
@@ -301,23 +291,17 @@ def encoder_layer(
 
 
 def decoder_layer(
-    X,
-    Z,
-    trg_mask,
-    src_mask,
-    masked_multihead_attention_params,
-    layer_norm1_params,
-    multihead_attention_params,
-    layer_norm2_params,
-    position_wise_ffn_params,
-    layer_norm3_params,
-):
-    # X -> (trg_seq_len, d_model)
-    # Z -> (src_seq_len, d_model) which is the encoder outputs
-    # trg_mask -> (seq_len, seq_len) which is the mask for the first attn block
-    # src_mask -> (seq_len, seq_len) which is the mask for the second attn block
-    # output -> (seq_len, d_model)
-
+    X: Float[Array, "trg_seq_len d_model"],
+    Z: Float[Array, "src_seq_len d_model"],
+    trg_mask: Float[Array, "trg_seq_len trg_seq_len"],
+    src_mask: Float[Array, "trc_seq_len src_seq_len"],
+    masked_multihead_attention_params: PyTree,
+    layer_norm1_params: PyTree,
+    multihead_attention_params: PyTree,
+    layer_norm2_params: PyTree,
+    position_wise_ffn_params: PyTree,
+    layer_norm3_params: PyTree,
+) -> Float[Array, "trg_seq_len d_model"]:
     # masked multihead attention
     prev = X
     out = multihead_attention(
@@ -343,19 +327,30 @@ def decoder_layer(
 ################################
 ###### Masking Functions #######
 ################################
-def create_pad_mask(x, y, pad_idx):
-    # x -> (x_seq_len)
-    # y -> (y_seq_len)
-    # output -> (y_seq_len, x_seq_len), positions that are True are to be masked out
+def create_pad_mask(
+    x: Int[Array, "in_seq_len"],
+    y: Int[Array, "out_seq_len"],
+    pad_idx: int,
+) -> Bool[Array, "out_seq_len in_seq_len"]:
+    # positions that are True are to be masked out
     return (x == pad_idx).reshape(1, -1) | (y == pad_idx).reshape(-1, 1)
 
 
-def create_illegal_connections_mask(seq_len):
-    # output -> (seq_len, seq_len), positions that are True are to be masked out
+def create_illegal_connections_mask(seq_len: int) -> Bool[Array, "seq_len seq_len"]:
+    # positions that are True are to be masked out
     return ~jnp.tri(seq_len, seq_len, k=0, dtype=jnp.bool_)
 
 
-def create_masks(src_token_ids, trg_token_ids, pad_idx, eps=-1e9):
+def create_masks(
+    src_token_ids: Int[Array, "src_seq_len"],
+    trg_token_ids: Int[Array, "trg_seq_len"],
+    pad_idx: int,
+    eps: int = -1e9,
+) -> tuple[
+    Float[Array, "src_seq_len src_seq_len"],
+    Float[Array, "trg_seq_len src_seq_len"],
+    Float[Array, "trg_seq_len trg_seq_len"],
+]:
     trg_seq_len = trg_token_ids.shape[0]
 
     encoder_src_mask = create_pad_mask(src_token_ids, src_token_ids, pad_idx) * eps
@@ -370,7 +365,12 @@ def create_masks(src_token_ids, trg_token_ids, pad_idx, eps=-1e9):
 ################################
 ######### Transformer ##########
 ################################
-def encoder(src_token_ids, src_mask, src_embeddings_table, encoder_stack):
+def encoder(
+    src_token_ids: Int[Array, "src_seq_len"],
+    src_mask: Float[Array, "src_seq_len src_seq_len"],
+    src_embeddings_table: Float[Array, "src_vocab_size d_model"],
+    encoder_stack: PyTree,
+) -> Float[Array, "src_seq_len d_model"]:
     # (src_seq_len) -> (src_seq_len, d_model)
     src_embeddings = embedding_lookup(src_token_ids, src_embeddings_table)
 
@@ -389,14 +389,14 @@ def encoder(src_token_ids, src_mask, src_embeddings_table, encoder_stack):
 
 
 def decoder(
-    trg_token_ids,
-    Z,
-    src_mask,
-    trg_mask,
-    trg_embeddings_table,
-    decoder_stack,
-    final_linear_layer_matrix,
-):
+    trg_token_ids: Int[Array, "trg_seq_len"],
+    Z: Float[Array, "src_seq_len d_model"],
+    src_mask: Float[Array, "trg_seq_len src_seq_len"],
+    trg_mask: Float[Array, "trg_seq_len trg_seq_len"],
+    trg_embeddings_table: Float[Array, "trg_vocab_size d_model"],
+    decoder_stack: PyTree,
+    final_linear_layer_matrix: Float[Array, "d_model trg_vocab_size"],
+) -> Float[Array, "trg_seq_len trg_vocab_size"]:
     # (trg_seq_len) -> (trg_seq_len, d_model)
     trg_embeddings = embedding_lookup(trg_token_ids, trg_embeddings_table)
 
@@ -420,15 +420,15 @@ def decoder(
 
 
 def transformer_forward_fn(
-    src_token_ids,
-    trg_token_ids,
-    src_embeddings_table,
-    trg_embeddings_table,
-    encoder_stack,
-    decoder_stack,
-    final_linear_layer_matrix,
-    pad_idx,
-):
+    src_token_ids: Int[Array, "src_seq_len"],
+    trg_token_ids: Int[Array, "trg_seq_len"],
+    src_embeddings_table: Float[Array, "src_vocab_size d_model"],
+    trg_embeddings_table: Float[Array, "trg_vocab_size d_model"],
+    encoder_stack: PyTree,
+    decoder_stack: PyTree,
+    final_linear_layer_matrix: Float[Array, "d_model trg_vocab_size"],
+    pad_idx: int,
+) -> Float[Array, "trg_seq_len trg_vocab_size"]:
     # TODO: maybe the caller should be responsible for creating the masks?
     encoder_src_mask, decoder_src_mask, decoder_trg_mask = create_masks(
         src_token_ids, trg_token_ids, pad_idx
@@ -452,16 +452,16 @@ def transformer_forward_fn(
 
 
 def transformer_predict_fn(
-    src_token_ids,
-    max_sequence_length,
-    src_embeddings_table,
-    trg_embeddings_table,
-    encoder_stack,
-    decoder_stack,
-    final_linear_layer_matrix,
-    sos_idx,
-    pad_idx,
-):
+    src_token_ids: Int[Array, "src_seq_len"],
+    max_sequence_length: int,
+    src_embeddings_table: Float[Array, "src_vocab_size d_model"],
+    trg_embeddings_table: Float[Array, "trg_vocab_size d_model"],
+    encoder_stack: PyTree,
+    decoder_stack: PyTree,
+    final_linear_layer_matrix: Float[Array, "d_model trg_vocab_size"],
+    sos_idx: int,
+    pad_idx: int,
+) -> Float[Array, "max_sequence_length trg_vocab_size"]:
     # encoder forward pass
     encoder_src_mask, _, _ = create_masks(src_token_ids, src_token_ids, pad_idx)
     Z = encoder(

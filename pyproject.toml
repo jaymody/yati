@@ -9,21 +9,18 @@ packages = [{include = "yati"}]
 [tool.poetry.dependencies]
 python = "^3.9"
 jax = {extras = ["cpu"], version = "^0.3.17"}
-ipywidgets = "^8.0.2"
-
+jaxtyping = "^0.2.5"
+tokenizers = "^0.12.1"
+datasets = "^2.4.0"
 
 [tool.poetry.group.dev.dependencies]
 black = "^22.8.0"
 pylint = "^2.15.2"
 isort = "^5.10.1"
 ipykernel = "^6.15.3"
+ipywidgets = "^8.0.2"
 matplotlib = "^3.6.0"
 seaborn = "^0.12.0"
-
-
-[tool.poetry.group.scripts.dependencies]
-tokenizers = "^0.12.1"
-datasets = "^2.4.0"
 
 [build-system]
 requires = ["poetry-core"]

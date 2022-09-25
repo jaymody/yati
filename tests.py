@@ -1,14 +1,11 @@
 import jax
 import jax.numpy as jnp
-from jaxtyping import install_import_hook
 
-# enables runtime type checking for any functions that are properly type hinted
-with install_import_hook("model", ("typeguard", "typechecked")):
-    from model import (
-        initialize_transformer_params,
-        transformer_forward_fn,
-        transformer_predict_fn,
-    )
+from model import (
+    initialize_transformer_params,
+    transformer_forward_fn,
+    transformer_predict_fn,
+)
 
 
 def test_initialization_is_random():
@@ -91,8 +88,3 @@ def test_initialization_forward_fn_and_predict_fn():
         pad_idx=0,
     )
     print(jnp.argmax(logits, axis=-1))
-
-
-if __name__ == "__main__":
-    test_initialization_is_random()
-    test_initialization_forward_fn_and_predict_fn()

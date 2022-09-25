@@ -2,15 +2,32 @@ import inspect
 
 import jax
 import jax.numpy as jnp
+import numpy as np
 import pytest
+import torch
 
 from model import (
     initialize_transformer_params,
+    layer_norm,
     transformer_forward_fn,
     transformer_predict_fn,
 )
 
 _SEED = 123
+
+
+def create_random_tensors(shapes, seed):
+    key = jax.random.PRNGKey(seed)
+    keys = jax.random.split(key, len(shapes))
+    return [jax.random.normal(k, shape) for k, shape in zip(keys, shapes)]
+
+
+def jax_to_torch(arr):
+    return torch.from_numpy(np.array(arr))
+
+
+def allclose(torch_tensor, jax_array):
+    return np.allclose(torch_tensor.detach().numpy(), np.array(jax_array))
 
 
 class BlockJaxKeyReuse:
@@ -169,3 +186,17 @@ def test_forward_fn_and_predict_fn():
         pad_idx=0,
     )
     print(jnp.argmax(logits, axis=-1))
+
+
+def test_layer_norm():
+    eps = 1e-6
+    x, gamma, beta = create_random_tensors([(5, 10), (10,), (10,)], _SEED)
+
+    torch_layer_norm = torch.nn.LayerNorm(10, eps)
+    torch_layer_norm.weight = torch.nn.Parameter(jax_to_torch(gamma))
+    torch_layer_norm.bias = torch.nn.Parameter(jax_to_torch(beta))
+    torch_output = torch_layer_norm(jax_to_torch(x))
+
+    jax_output = layer_norm(x, gamma, beta, eps)
+
+    assert allclose(torch_output, jax_output)

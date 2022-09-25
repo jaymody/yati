@@ -17,12 +17,6 @@ from model import (
 _SEED = 123
 
 
-def create_random_tensors(shapes, seed):
-    key = jax.random.PRNGKey(seed)
-    keys = jax.random.split(key, len(shapes))
-    return [jax.random.normal(k, shape) for k, shape in zip(keys, shapes)]
-
-
 def jax_to_torch(arr):
     return torch.from_numpy(np.array(arr))
 
@@ -196,14 +190,20 @@ def test_forward_fn_and_predict_fn():
 
 def test_layer_norm():
     eps = 1e-6
-    x, gamma, beta = create_random_tensors([(5, 10), (10,), (10,)], _SEED)
+    seq_len = 5
+    d_model = 10
 
-    torch_layer_norm = torch.nn.LayerNorm(10, eps)
-    torch_layer_norm.weight = torch.nn.Parameter(jax_to_torch(gamma))
-    torch_layer_norm.bias = torch.nn.Parameter(jax_to_torch(beta))
-    torch_output = torch_layer_norm(jax_to_torch(x))
+    X = torch.normal(0, 1, (seq_len, d_model))
 
-    jax_output = layer_norm(x, gamma, beta, eps)
+    torch_layer_norm = torch.nn.LayerNorm(d_model, eps)
+    torch_output = torch_layer_norm(X)
+
+    jax_output = layer_norm(
+        x=torch_to_jax(X),
+        gamma=torch_to_jax(torch_layer_norm.weight),
+        beta=torch_to_jax(torch_layer_norm.bias),
+        eps=eps,
+    )
 
     assert allclose(torch_output, jax_output)
 

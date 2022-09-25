@@ -2,6 +2,7 @@ import inspect
 
 import jax
 import jax.numpy as jnp
+import pytest
 
 from model import (
     initialize_transformer_params,
@@ -71,6 +72,56 @@ class BlockJaxKeyReuse:
         # restore original jax.random functions
         for name, func in self.jax_random_functions.items():
             setattr(jax.random, name, func)
+
+
+def test_BlockJaxKeyReuse():
+    with pytest.raises(AssertionError):
+        with BlockJaxKeyReuse():
+            key = jax.random.PRNGKey(123)
+            a = jax.random.normal(key, (2, 5))
+            b = jax.random.normal(key, (2, 5))
+
+    with pytest.raises(AssertionError):
+        with BlockJaxKeyReuse():
+            key = jax.random.PRNGKey(123)
+            key, subkey = jax.random.normal(key, (2, 5))
+            key = jax.random.PRNGKey(123)
+            key, subkey = jax.random.normal(key, (2, 5))
+
+    with pytest.raises(AssertionError):
+        with BlockJaxKeyReuse():
+            key = jax.random.PRNGKey(123)
+            key, a_subkey, b_subkey = jax.random.split(key, 3)
+            a = jax.random.normal(key, (2, 5))
+            b = jax.random.normal(a_subkey, (2, 5))
+            c = jax.random.normal(b_subkey, (2, 5))
+            key, subkey = jax.random.split(key)
+
+    # the following tests should not throw any errors
+    with BlockJaxKeyReuse():
+        key = jax.random.PRNGKey(123)
+        key, a_subkey, b_subkey = jax.random.split(key, 3)
+        a = jax.random.normal(a_subkey, (2, 5))
+        b = jax.random.normal(b_subkey, (2, 5))
+
+    with BlockJaxKeyReuse():
+        key = jax.random.PRNGKey(123)
+        key, subkey = jax.random.split(key)
+        a_subkey, b_subkey = jax.random.split(subkey)
+        a = jax.random.normal(a_subkey, (2, 5))
+        b = jax.random.normal(b_subkey, (2, 5))
+
+    with BlockJaxKeyReuse():
+        key = jax.random.PRNGKey(123)
+        key, a_subkey, b_subkey = jax.random.split(key, 3)
+        a = jax.random.normal(key, (2, 5))
+        b = jax.random.normal(a_subkey, (2, 5))
+        c = jax.random.normal(b_subkey, (2, 5))
+
+    with BlockJaxKeyReuse():
+        key = jax.random.PRNGKey(123)
+        key, subkey = jax.random.split(key)
+        key, subkey = jax.random.split(key)
 
 
 def test_initialization_does_not_reuse_keys():

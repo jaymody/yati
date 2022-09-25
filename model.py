@@ -279,6 +279,12 @@ def initialize_transformer_params_with_shared_weight_matrix(
 ################################
 #### Encoder/Decoder Layers ####
 ################################
+# TODO: in the original paper they do LayerNorm(x + Sublayer(x))
+# but in the actual implementation in tensor2tensor (and other implementations) use
+# x + Sublayer(LayerNorm(x)) (they LayerNorm the input rather than the output)
+# see: http://disq.us/p/1s2bpmf
+
+
 def encoder_layer(
     X: Float[Array, "src_seq_len d_model"],
     src_mask: Float[Array, "src_seq_len src_seq_len"],

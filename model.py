@@ -37,13 +37,17 @@ def create_positional_embeddings(
 ######### Basic Layers #########
 ################################
 def layer_norm(
-    x: Float[Array, "d_model"],
+    x: Float[Array, "... d_model"],
     gamma: Float[Array, "d_model"],
     beta: Float[Array, "d_model"],
     eps: float = 1e-8,
-) -> Float[Array, "d_model"]:
+) -> Float[Array, "... d_model"]:
     # https://pytorch.org/docs/stable/generated/torch.nn.LayerNorm.html
-    return gamma * (x - jnp.mean(x)) / (jnp.std(x) + eps) + beta
+    # [..., None] is a fancy trick to reshape the array
+    # such that the last dimension is 1 for broadcasting
+    numerator = x - jnp.mean(x, axis=-1)[..., None]
+    denominator = jnp.sqrt(jnp.var(x, axis=-1)[..., None] + eps)
+    return gamma * (numerator / denominator) + beta
 
 
 def embedding_lookup(

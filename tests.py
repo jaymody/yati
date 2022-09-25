@@ -9,6 +9,7 @@ import torch
 from model import (
     initialize_transformer_params,
     layer_norm,
+    position_wise_ffn,
     transformer_forward_fn,
     transformer_predict_fn,
 )
@@ -26,8 +27,13 @@ def jax_to_torch(arr):
     return torch.from_numpy(np.array(arr))
 
 
+def torch_to_jax(tensor):
+    return jnp.array(tensor.detach().numpy())
+
+
 def allclose(torch_tensor, jax_array):
-    return np.allclose(torch_tensor.detach().numpy(), np.array(jax_array))
+    # maybe also check not nan, inf, or zero?
+    return np.allclose(torch_tensor.detach().numpy(), np.array(jax_array), 1e-04, 1e-06)
 
 
 class BlockJaxKeyReuse:
@@ -198,5 +204,27 @@ def test_layer_norm():
     torch_output = torch_layer_norm(jax_to_torch(x))
 
     jax_output = layer_norm(x, gamma, beta, eps)
+
+    assert allclose(torch_output, jax_output)
+
+
+def test_position_wise_ffn():
+    seq_len = 10
+    d_model = 512
+    d_ff = 2048
+
+    X = torch.normal(0, 1, (seq_len, d_model))
+
+    torch_linear1 = torch.nn.Linear(d_model, d_ff)
+    torch_linear2 = torch.nn.Linear(d_ff, d_model)
+    torch_output = torch_linear2(torch.relu(torch_linear1(X)))
+
+    jax_output = position_wise_ffn(
+        X=torch_to_jax(X),
+        W1=torch_to_jax(torch_linear1.weight).T,
+        b1=torch_to_jax(torch_linear1.bias),
+        W2=torch_to_jax(torch_linear2.weight).T,
+        b2=torch_to_jax(torch_linear2.bias),
+    )
 
     assert allclose(torch_output, jax_output)

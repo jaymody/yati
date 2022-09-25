@@ -57,13 +57,7 @@ def position_wise_ffn(X, W1, b1, W2, b2):
     # b1 -> (d_model)
 
     # output -> (seq_len, d_model)
-
-    def ffn(x, W1, b1, W2, b2):
-        # x -> (d_model)
-        # output -> (d_model)
-        return jax.nn.relu(x @ W1 + b1) @ W2 + b2
-
-    return jax.vmap(ffn, (0, None, None, None, None), 0)(X, W1, b1, W2, b2)
+    return jax.nn.relu(X @ W1 + b1) @ W2 + b2
 
 
 def final_linear_layer(X, final_linear_layer_matrix):
@@ -72,13 +66,7 @@ def final_linear_layer(X, final_linear_layer_matrix):
     # b -> (trg_vocab_size)
 
     # output -> (trg_seq_len, trg_vocab_size)
-
-    def ffn(x, final_linear_layer_matrix):
-        # x -> (d_model)
-        # output -> (trg_vocab_size)
-        return jax.nn.softmax(x @ final_linear_layer_matrix)
-
-    return jax.vmap(ffn, (0, None), 0)(X, final_linear_layer_matrix)
+    return jax.nn.softmax(X @ final_linear_layer_matrix)
 
 
 def scaled_dot_product_attention(Q, K, V, mask):

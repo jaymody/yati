@@ -1,3 +1,5 @@
+import inspect
+
 import jax
 import jax.numpy as jnp
 
@@ -8,14 +10,40 @@ from model import (
 )
 
 
-def test_initialization_does_not_reuse_keys():
-    """Tests that we didn't reuse any keys during initialization."""
-    from inspect import getfullargspec, getmembers, isfunction
+class BlockJaxKeyReuse:
+    """Context manager that throws an error if a key is reused by a jax.random function.
 
-    used_keys = set()
+    Example Usage:
 
-    def check_key_is_not_reused_wrapper(func):
-        argspec = getfullargspec(func)
+    ```python
+    # throws an error
+    with BlockJaxKeyReuse():
+        key = jax.random.PRNGKey(123)
+        a = jax.random.normal(key, (2, 5))
+        b = jax.random.normal(key, (2, 5))  # throws an error here, key was already used
+        print(a + b)
+    ```
+
+    ```python
+    # passes
+    with BlockJaxKeyReuse():
+        key = jax.random.PRNGKey(123)
+        key, a_subkey, b_subkey = jax.random.split(key, 3)
+        a = jax.random.normal(a_subkey, (2, 5))
+        b = jax.random.normal(b_subkey, (2, 5))
+        print(a + b)
+    ```
+    """
+
+    def __init__(self):
+        self.jax_random_functions = {
+            name: func
+            for name, func in inspect.getmembers(jax.random, inspect.isfunction)
+        }
+        self.used_keys = set()
+
+    def add_key_reuse_check(self, func):
+        argspec = inspect.getfullargspec(func)
         if "key" not in argspec.args:
             return func
         key_arg_index = argspec.args.index("key")
@@ -27,26 +55,37 @@ def test_initialization_does_not_reuse_keys():
                 key = kwargs["key"]
 
             key = tuple(key.tolist())  # turn key into a hashable type
-            assert key not in used_keys, f"key {key} is reused by {func.__name__}"
-            used_keys.add(key)
+            assert key not in self.used_keys, f"key {key} was already been used"
+            self.used_keys.add(key)
 
             return func(*args, **kwargs)
 
         return wrapper
 
-    for name, func in getmembers(jax.random, isfunction):
-        setattr(jax.random, name, check_key_is_not_reused_wrapper(func))
+    def __enter__(self):
+        # add wrappers to all jax.random functions
+        for name, func in self.jax_random_functions.items():
+            setattr(jax.random, name, self.add_key_reuse_check(func))
 
-    initialize_transformer_params(
-        seed=123,
-        src_vocab_size=200,
-        trg_vocab_size=300,
-        d_model=512,
-        d_ff=2048,
-        h=8,
-        n_enc_layers=6,
-        n_dec_layers=6,
-    )
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        # restore original jax.random functions
+        for name, func in self.jax_random_functions.items():
+            setattr(jax.random, name, func)
+
+
+def test_initialization_does_not_reuse_keys():
+    """Tests that we didn't reuse any keys during initialization."""
+    with BlockJaxKeyReuse():
+        initialize_transformer_params(
+            seed=123,
+            src_vocab_size=200,
+            trg_vocab_size=300,
+            d_model=512,
+            d_ff=2048,
+            h=8,
+            n_enc_layers=6,
+            n_dec_layers=6,
+        )
 
 
 def test_forward_fn_and_predict_fn():

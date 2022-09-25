@@ -248,9 +248,9 @@ def train_charsort(
     lr: float = 1e-4,
     fast_dev_run: bool = True,
 ):
-    n_train_pairs = 500 if fast_dev_run else 100000
-    n_val_pairs = 100 if fast_dev_run else 20000
-    n_test_pairs = 100 if fast_dev_run else 20000
+    n_train_pairs = 500 if fast_dev_run else 10000
+    n_val_pairs = 100 if fast_dev_run else 2000
+    n_test_pairs = 100 if fast_dev_run else 2000
 
     # get data
     train_pairs = create_unsorted_sorted_char_pairs(

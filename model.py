@@ -2,7 +2,7 @@ import jax
 import jax.numpy as jnp
 from jaxtyping import Array, Bool, Float, Int, PyTree, UInt
 
-PRNGKeyType = UInt[Array, ""]
+PRNGKeyType = UInt[Array, "2"]
 
 
 ################################
@@ -75,30 +75,30 @@ def final_linear_layer(
 
 
 def scaled_dot_product_attention(
-    Q: Float[Array, "in_seq_len d_k"],
-    K: Float[Array, "out_seq_len d_k"],
-    V: Float[Array, "out_seq_len d_v"],
-    mask: Float[Array, "in_seq_len out_seq_len"],
-) -> Float[Array, "out_seq_len d_v"]:
+    Q: Float[Array, "trg_seq_len d_k"],
+    K: Float[Array, "src_seq_len d_k"],
+    V: Float[Array, "src_seq_len d_v"],
+    mask: Float[Array, "trg_seq_len src_seq_len"],
+) -> Float[Array, "trg_seq_len d_v"]:
     d_k = K.shape[-1]
     return jax.nn.softmax((Q @ K.T / jnp.sqrt(d_k)) + mask) @ V
 
 
 def multihead_attention(
-    Q: Float[Array, "in_seq_len d_model"],
-    K: Float[Array, "out_seq_len d_model"],
-    V: Float[Array, "out_seq_len d_model"],
+    Q: Float[Array, "trg_seq_len d_model"],
+    K: Float[Array, "src_seq_len d_model"],
+    V: Float[Array, "src_seq_len d_model"],
     WQ: Float[Array, "h d_model d_k"],
     WK: Float[Array, "h d_model d_k"],
     WV: Float[Array, "h d_model d_v"],
-    WO: Float[Array, "d_model d_model"],  # TODO: should be h*d_v x d_model
-    mask: Float[Array, "in_seq_len out_seq_len"],
-) -> Float[Array, "out_seq_len d_model"]:
-    Q = Q @ WQ  # (in_seq_len, d_model) @ (h, d_model, d_k) -> (h, in_seq_len, d_k)
-    K = K @ WK  # (in_seq_len, d_model) @ (h, d_model, d_k) -> (h, in_seq_len, d_k)
-    V = V @ WV  # (in_seq_len, d_model) @ (h, d_model, d_v) -> (h, in_seq_len, d_v)
+    WO: Float[Array, "d_model d_model"],  # TODO: should be (h x d_v,  d_model)
+    mask: Float[Array, "trg_seq_len src_seq_len"],
+) -> Float[Array, "trg_seq_len d_model"]:
+    Q = Q @ WQ  # (trg_seq_len, d_model) @ (h, d_model, d_k) -> (h, trg_seq_len, d_k)
+    K = K @ WK  # (src_seq_len, d_model) @ (h, d_model, d_k) -> (h, src_seq_len, d_k)
+    V = V @ WV  # (src_seq_len, d_model) @ (h, d_model, d_v) -> (h, src_seq_len, d_v)
 
-    # heads -> (h, out_seq_len, d_v)
+    # heads -> (h, trg_seq_len, d_v)
     heads = jax.vmap(scaled_dot_product_attention, (0, 0, 0, None), 0)(Q, K, V, mask)
 
     return jnp.hstack(heads) @ WO
@@ -332,10 +332,10 @@ def decoder_layer(
 ###### Masking Functions #######
 ################################
 def create_pad_mask(
-    x: Int[Array, "in_seq_len"],
-    y: Int[Array, "out_seq_len"],
+    x: Int[Array, "src_seq_len"],
+    y: Int[Array, "trg_seq_len"],
     pad_idx: int,
-) -> Bool[Array, "out_seq_len in_seq_len"]:
+) -> Bool[Array, "trg_seq_len src_seq_len"]:
     # positions that are True are to be masked out
     return (x == pad_idx).reshape(1, -1) | (y == pad_idx).reshape(-1, 1)
 

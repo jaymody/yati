@@ -1,3 +1,5 @@
+from functools import partial
+
 import jax
 import jax.numpy as jnp
 from tokenizers import Tokenizer
@@ -5,9 +7,11 @@ from tokenizers import Tokenizer
 from model import (
     initialize_transformer_params_with_shared_weight_matrix,
     transformer_forward_fn,
+    transformer_predict_fn,
 )
 from utils import (
     PAD_index,
+    SOS_index,
     create_unsorted_sorted_char_pairs,
     load_wmt_2014_pairs,
     train_tokenizer,
@@ -31,7 +35,8 @@ model_kwargs_for_size = {
 }
 
 
-@jax.jit
+# TODO: why does jitting this function break when called by loss fn and with
+# static argnames set to pad_idx
 def forward_fn_batched(src_token_ids, trg_token_ids, params_dict, pad_idx):
     # src_token_ids -> (batch_size, src_seq_len)
     # trg_token_ids -> (batch_size, trg_seq_len)
@@ -51,7 +56,29 @@ def forward_fn_batched(src_token_ids, trg_token_ids, params_dict, pad_idx):
     )
 
 
-@jax.jit
+# TODO: why is this so slow to compile and run?
+@partial(jax.jit, static_argnames=["max_seq_len", "sos_idx", "pad_idx"])
+def predict_fn_batched(src_token_ids, params_dict, max_seq_len, sos_idx, pad_idx):
+    # src_token_ids -> (batch_size, src_seq_len)
+    # params_dict -> dict of params
+    # output -> (batch_size, trg_seq_len)
+    return jax.vmap(
+        transformer_predict_fn,
+        in_axes=(0, None, None, None, None, None, None, None, None),
+    )(
+        src_token_ids,
+        max_seq_len,
+        params_dict["shared_weight_matrix"],
+        params_dict["shared_weight_matrix"],
+        params_dict["encoder_stack"],
+        params_dict["decoder_stack"],
+        params_dict["shared_weight_matrix"].T,
+        sos_idx,
+        pad_idx,
+    )
+
+
+@partial(jax.jit, static_argnames=["pad_idx"])
 def loss_fn(src_token_ids, trg_token_ids, params_dict, pad_idx):
     # src_token_ids -> (batch_size, src_seq_len)
     # trg_token_ids -> (batch_size, trg_seq_len)
@@ -67,7 +94,7 @@ def loss_fn(src_token_ids, trg_token_ids, params_dict, pad_idx):
     return jnp.mean(jnp.sum(labels * -jnp.log(logits), axis=-1))
 
 
-@jax.jit
+@partial(jax.jit, static_argnames=["pad_idx"])
 def loss_and_grad_fn_jitted(src_token_ids, trg_token_ids, params_dict, pad_idx):
     return jax.value_and_grad(loss_fn, argnums=2)(
         src_token_ids, trg_token_ids, params_dict, pad_idx
@@ -167,6 +194,12 @@ def train(
             # grad = clip_gradients(grad, -1.0, 1.0)
             params_dict = update_step(params_dict, grad, lr)
             print(f"train_loss = {train_loss}")
+
+            # logits = predict_fn_batched(
+            #     src_token_ids, params_dict, max_seq_len, SOS_index, PAD_index
+            # )
+            # print(jnp.argmax(logits, axis=-1)[0])
+            # print(trg_token_ids[0])
 
         # validation step
         for src_token_ids, trg_token_ids in data_iterator(

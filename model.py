@@ -223,9 +223,13 @@ def initialize_transformer_params(
     key, *dec_keys = jax.random.split(key, n_dec_layers + 1)
     final_layer_key = key
 
-    src_embeddings_table = xavier_uniform(src_embedding_key, (src_vocab_size, d_model))
+    src_embeddings_table = jax.random.normal(
+        src_embedding_key, (src_vocab_size, d_model)
+    )
 
-    trg_embeddings_table = xavier_uniform(trg_embedding_key, (trg_vocab_size, d_model))
+    trg_embeddings_table = jax.random.normal(
+        trg_embedding_key, (trg_vocab_size, d_model)
+    )
 
     encoder_stack = [
         initialize_encoder_layer(enc_keys[i], d_model, d_ff, h)

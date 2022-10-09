@@ -89,9 +89,12 @@ def loss_fn(src_token_ids, trg_token_ids, params_dict, pad_idx):
     )
 
     # cross entropy loss
-    logits = next_token_probabilities[:, :-1, :]
-    labels = jax.nn.one_hot(trg_token_ids[:, 1:], logits.shape[-1])
-    return jnp.mean(jnp.sum(labels * -jnp.log(logits), axis=-1))
+    batch_size = src_token_ids.shape[0]
+    vocab_size = next_token_probabilities.shape[-1]
+    logits = next_token_probabilities[:, :-1, :]  # skip last token
+    labels = jax.nn.one_hot(trg_token_ids[:, 1:], vocab_size)  # skip first token
+    loss = jnp.sum(labels * -jnp.log(logits)) / batch_size
+    return loss
 
 
 @partial(jax.jit, static_argnames=["pad_idx"])
@@ -107,6 +110,28 @@ def clip_gradients(grad, min_val, max_val):
 
 def update_step(params_dict, grad, lr):
     return jax.tree_util.tree_map(lambda w, g: w - lr * g, params_dict, grad)
+
+
+def compute_loss_and_accuracy(
+    all_src_token_ids,
+    all_trg_token_ids,
+    params_dict,
+    batch_size,
+    pad_idx,
+    sos_idx,
+    max_seq_len,
+):
+    running_loss = 0
+    n_total = 0
+    for src_token_ids, trg_token_ids in get_batches(
+        all_src_token_ids, all_trg_token_ids, batch_size
+    ):
+        batch_size = src_token_ids.shape[0]
+        n_total += batch_size
+        running_loss += (
+            loss_fn(src_token_ids, trg_token_ids, params_dict, pad_idx) * batch_size
+        )
+    return running_loss / n_total, -1  # TODO: implement accuracy, probably bleu score
 
 
 def pad_token_ids(token_ids, max_seq_len: int, pad_idx: int):
@@ -133,34 +158,16 @@ def encode_and_pad(texts, tokenizer, max_seq_len, pad_index):
     )
 
 
-def data_iterator(
-    pairs, src_tokenizer, trg_tokenizer, batch_size, max_seq_len, drop_last
-):
+def get_src_trg_token_ids(pairs, src_tokenizer, trg_tokenizer, max_seq_len):
     src_texts, trg_texts = zip(*pairs)
-
     src_token_ids = encode_and_pad(src_texts, src_tokenizer, max_seq_len, PAD_index)
     trg_token_ids = encode_and_pad(trg_texts, trg_tokenizer, max_seq_len, PAD_index)
-
-    for i in range(0, len(src_token_ids), batch_size):
-        if drop_last and i + batch_size > len(src_token_ids):
-            break
-
-        src_token_ids_batch = jnp.array(src_token_ids[i : i + batch_size])
-        trg_token_ids_batch = jnp.array(trg_token_ids[i : i + batch_size])
-
-        yield src_token_ids_batch, trg_token_ids_batch
+    return src_token_ids, trg_token_ids
 
 
-def predict_data_iterator(src_texts, src_tokenizer, batch_size, max_seq_len, drop_last):
-    src_token_ids = encode_and_pad(src_texts, src_tokenizer, max_seq_len, PAD_index)
-
-    for i in range(0, len(src_token_ids), batch_size):
-        if drop_last and i + batch_size > len(src_token_ids):
-            break
-
-        src_token_ids_batch = jnp.array(src_token_ids[i : i + batch_size])
-
-        yield src_token_ids_batch
+def get_batches(train_X, train_y, batch_size):
+    for i in range(0, len(train_X), batch_size):
+        yield train_X[i : i + batch_size], train_y[i : i + batch_size]
 
 
 def train(
@@ -171,103 +178,126 @@ def train(
     trg_tokenizer: Tokenizer,
     params_dict: dict,
     max_seq_len: int,
-    train_batch_size: int = 128,
-    val_batch_size: int = 256,
-    test_batch_size: int = 256,
-    n_epochs: int = 10,
-    lr: float = 1e-4,
+    train_batch_size: int,
+    val_batch_size: int,
+    test_batch_size: int,
+    num_train_steps: int,
+    val_every_n_steps: int,
+    lr: float,
 ):
-    for epoch in range(n_epochs):
-        print(f"\n\n\n--- Epoch {epoch} ---")
-        # train step
-        for src_token_ids, trg_token_ids in data_iterator(
-            train_pairs,
-            src_tokenizer,
-            trg_tokenizer,
+    # encode string sequences to ids
+    train_src_token_ids, train_trg_token_ids = get_src_trg_token_ids(
+        train_pairs, src_tokenizer, trg_tokenizer, max_seq_len
+    )
+    val_src_token_ids, val_trg_token_ids = get_src_trg_token_ids(
+        val_pairs, src_tokenizer, trg_tokenizer, max_seq_len
+    )
+    test_src_token_ids, test_trg_token_ids = get_src_trg_token_ids(
+        test_pairs, src_tokenizer, trg_tokenizer, max_seq_len
+    )
+
+    # compute loss and accuracy and train and val sets
+    def compute_and_print_eval_metrics(params_dict):
+        train_loss, train_acc = compute_loss_and_accuracy(
+            train_src_token_ids,
+            train_trg_token_ids,
+            params_dict,
             train_batch_size,
+            PAD_index,
+            SOS_index,
             max_seq_len,
-            drop_last=True,
+        )
+        val_loss, val_acc = compute_loss_and_accuracy(
+            val_src_token_ids,
+            val_trg_token_ids,
+            params_dict,
+            val_batch_size,
+            PAD_index,
+            SOS_index,
+            max_seq_len,
+        )
+        print(f"    train_loss = {train_loss}")
+        print(f"    train_acc = {train_acc}")
+        print(f"    val_loss = {val_loss}")
+        print(f"    val_acc = {val_acc}")
+
+    # compute metrics before model is trained for reference
+    print("--- eval metrics before training ---")
+    compute_and_print_eval_metrics(params_dict)
+
+    # train loop
+    train_step_i = 0
+    while train_step_i < num_train_steps:
+        for src_token_ids, trg_token_ids in get_batches(
+            train_src_token_ids, train_trg_token_ids, train_batch_size
         ):
-            train_loss, grad = loss_and_grad_fn_jitted(
+            loss, grad = loss_and_grad_fn_jitted(
                 src_token_ids, trg_token_ids, params_dict, PAD_index
             )
-            # grad = clip_gradients(grad, -1.0, 1.0)
             params_dict = update_step(params_dict, grad, lr)
-            print(f"train_loss = {train_loss}")
+            print()
+            print(f"--- step {train_step_i} / {num_train_steps} ---")
+            print(f"loss of batch = {loss}")
 
-            # logits = predict_fn_batched(
-            #     src_token_ids, params_dict, max_seq_len, SOS_index, PAD_index
-            # )
-            # print(jnp.argmax(logits, axis=-1)[0])
-            # print(trg_token_ids[0])
+            # eval metrics
+            if train_step_i % val_every_n_steps == 0:
+                compute_and_print_eval_metrics(params_dict)
 
-        # validation step
-        for src_token_ids, trg_token_ids in data_iterator(
-            val_pairs,
-            src_tokenizer,
-            trg_tokenizer,
-            val_batch_size,
-            max_seq_len,
-            drop_last=True,
-        ):
-            val_loss = loss_fn(src_token_ids, trg_token_ids, params_dict, PAD_index)
-            print(f"val_loss = {val_loss}")
-
-    # test step
+            train_step_i += 1
 
 
-def train_wmt2014(
-    src_lang: str = "en",
-    trg_lang: str = "de",
-    tokenizer_type: str = "bpe",
-    vocab_size: int = 32000,
-    max_seq_len: int = 256,  # TODO: change this after doing EDA on the dataset
-    train_batch_size: int = 128,
-    val_batch_size: int = 256,
-    test_batch_size: int = 256,
-    seed: int = 123,
-    n_epochs: int = 10,
-    lr: float = 1e-4,
-    fast_dev_run: bool = True,
-):
-    n_train_pairs = 500 if fast_dev_run else None
-    n_val_pairs = 100 if fast_dev_run else None
-    n_test_pairs = 100 if fast_dev_run else None
+# def train_wmt2014(
+#     src_lang: str = "en",
+#     trg_lang: str = "de",
+#     tokenizer_type: str = "bpe",
+#     vocab_size: int = 32000,
+#     max_seq_len: int = 256,  # TODO: change this after doing EDA on the dataset
+#     train_batch_size: int = 128,
+#     val_batch_size: int = 256,
+#     test_batch_size: int = 256,
+#     seed: int = 123,
+#     n_epochs: int = 10,
+#     lr: float = 1e-4,
+#     fast_dev_run: bool = True,
+# ):
+#     n_train_pairs = 500 if fast_dev_run else None
+#     n_val_pairs = 100 if fast_dev_run else None
+#     n_test_pairs = 100 if fast_dev_run else None
 
-    # get data
-    train_pairs = load_wmt_2014_pairs(src_lang, trg_lang, "train")[:n_train_pairs]
-    val_pairs = load_wmt_2014_pairs(src_lang, trg_lang, "validation")[:n_val_pairs]
-    test_pairs = load_wmt_2014_pairs(src_lang, trg_lang, "test")[:n_test_pairs]
+#     # get data
+#     train_pairs = load_wmt_2014_pairs(src_lang, trg_lang, "train")[:n_train_pairs]
+#     val_pairs = load_wmt_2014_pairs(src_lang, trg_lang, "validation")[:n_val_pairs]
+#     test_pairs = load_wmt_2014_pairs(src_lang, trg_lang, "test")[:n_test_pairs]
 
-    # we used a shared tokenizer between src and trg, but only train it on the
-    # train pairs (if val and test has a token that is not learned from train pairs
-    # we want it to show up as the UNK_token to better represent predict time accuracy)
-    tokenizer = train_tokenizer(
-        texts=[text for pair in train_pairs for text in pair],
-        tokenizer_type=tokenizer_type,
-        vocab_size=vocab_size,
-    )
+#     # we used a shared tokenizer between src and trg, but only train it on the
+#     # train pairs (if val and test has a token that is not learned from train pairs
+#     # we want it to show up as the UNK_token to better represent predict time accuracy)
+#     tokenizer = train_tokenizer(
+#         texts=[text for pair in train_pairs for text in pair],
+#         tokenizer_type=tokenizer_type,
+#         vocab_size=vocab_size,
+#     )
 
-    params_dict = initialize_transformer_params_with_shared_weight_matrix(
-        seed=seed,
-        vocab_size=vocab_size,
-        **model_kwargs_for_size["tiny" if fast_dev_run else "base"],
-    )
+#     params_dict = initialize_transformer_params_with_shared_weight_matrix(
+#         seed=seed,
+#         vocab_size=vocab_size,
+#         **model_kwargs_for_size["tiny" if fast_dev_run else "base"],
+#     )
 
-    train(
-        train_pairs=train_pairs,
-        val_pairs=val_pairs,
-        test_pairs=test_pairs,
-        src_tokenizer=tokenizer,
-        trg_tokenizer=tokenizer,
-        params_dict=params_dict,
-        max_seq_len=max_seq_len,
-        train_batch_size=train_batch_size,
-        val_batch_size=val_batch_size,
-        test_batch_size=test_batch_size,
-        n_epochs=n_epochs,
-        lr=lr,
-    )
+#     train(
+#         train_pairs=train_pairs,
+#         val_pairs=val_pairs,
+#         test_pairs=test_pairs,
+#         src_tokenizer=tokenizer,
+#         trg_tokenizer=tokenizer,
+#         params_dict=params_dict,
+#         max_seq_len=max_seq_len,
+#         train_batch_size=train_batch_size,
+#         val_batch_size=val_batch_size,
+#         test_batch_size=test_batch_size,
+#         n_epochs=n_epochs,
+#         lr=lr,
+#     )
 
 
 def train_charsort(
@@ -277,8 +307,9 @@ def train_charsort(
     val_batch_size: int = 256,
     test_batch_size: int = 256,
     seed: int = 123,
-    n_epochs: int = 10,
-    lr: float = 1e-4,
+    num_train_steps: int = 100000,
+    lr: float = 1e-3,
+    val_every_n_steps: int = 50,
     fast_dev_run: bool = True,
 ):
     n_train_pairs = 500 if fast_dev_run else 10000
@@ -323,7 +354,8 @@ def train_charsort(
         train_batch_size=train_batch_size,
         val_batch_size=val_batch_size,
         test_batch_size=test_batch_size,
-        n_epochs=n_epochs,
+        num_train_steps=num_train_steps,
+        val_every_n_steps=val_every_n_steps,
         lr=lr,
     )
 

@@ -111,7 +111,7 @@ def xavier_uniform(key: PRNGKeyType, shape: tuple[int, ...], gain: float = 1.0):
     # https://pytorch.org/docs/stable/nn.init.html#torch.nn.init.xavier_uniform_
     assert len(shape) == 2
     a = gain * jnp.sqrt(6.0 / (shape[0] + shape[1]))
-    return a * jax.random.uniform(key, shape)
+    return jax.random.uniform(key, shape, minval=-a, maxval=a)
 
 
 def initialize_layer_norm_params(d_model: int):

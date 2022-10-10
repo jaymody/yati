@@ -282,10 +282,12 @@ def initialize_transformer_params_with_shared_weight_matrix(
 ################################
 #### Encoder/Decoder Layers ####
 ################################
-# TODO: in the original paper they do LayerNorm(x + Sublayer(x))
-# but in the actual implementation in tensor2tensor (and other implementations) use
-# x + Sublayer(LayerNorm(x)) (they LayerNorm the input rather than the output)
-# see: http://disq.us/p/1s2bpmf
+def sublayer_add_and_norm(x, sublayer_fn, layer_norm_params):
+    # TODO: in the original paper they do LayerNorm(x + Sublayer(x))
+    # but in the actual implementation in tensor2tensor (and other implementations) use
+    # x + Sublayer(LayerNorm(x)) (they LayerNorm the input rather than the output)
+    # see: http://disq.us/p/1s2bpmf
+    return x + sublayer_fn(layer_norm(x, **layer_norm_params))
 
 
 def encoder_layer(
@@ -297,18 +299,20 @@ def encoder_layer(
     layer_norm2_params: PyTree,
 ) -> Float[Array, "src_seq_len d_model"]:
     # multihead attention
-    prev = X
-    X = layer_norm(X, **layer_norm1_params)
-    out = multihead_attention(
-        Q=X, K=X, V=X, mask=src_mask, **multihead_attention_params
+    out = sublayer_add_and_norm(
+        x=X,
+        sublayer_fn=lambda x: multihead_attention(
+            Q=x, K=x, V=x, mask=src_mask, **multihead_attention_params
+        ),
+        layer_norm_params=layer_norm1_params,
     )
-    out = prev + out
 
     # position wise ffn
-    prev = out
-    out = layer_norm(out, **layer_norm2_params)
-    out = position_wise_ffn(out, **position_wise_ffn_params)
-    out = prev + out
+    out = sublayer_add_and_norm(
+        x=out,
+        sublayer_fn=lambda x: position_wise_ffn(x, **position_wise_ffn_params),
+        layer_norm_params=layer_norm2_params,
+    )
 
     return out
 
@@ -326,26 +330,29 @@ def decoder_layer(
     layer_norm3_params: PyTree,
 ) -> Float[Array, "trg_seq_len d_model"]:
     # masked multihead attention
-    prev = X
-    X = layer_norm(X, **layer_norm1_params)
-    out = multihead_attention(
-        Q=X, K=X, V=X, mask=trg_mask, **masked_multihead_attention_params
+    out = sublayer_add_and_norm(
+        x=X,
+        sublayer_fn=lambda x: multihead_attention(
+            Q=x, K=x, V=x, mask=trg_mask, **masked_multihead_attention_params
+        ),
+        layer_norm_params=layer_norm1_params,
     )
-    out = prev + out
 
     # multihead attention
-    prev = out
-    out = layer_norm(out, **layer_norm2_params)
-    out = multihead_attention(
-        Q=out, K=Z, V=Z, mask=src_mask, **multihead_attention_params
+    out = sublayer_add_and_norm(
+        x=out,
+        sublayer_fn=lambda x: multihead_attention(
+            Q=x, K=Z, V=Z, mask=src_mask, **multihead_attention_params
+        ),
+        layer_norm_params=layer_norm2_params,
     )
-    out = prev + out
 
     # position wise ffn
-    prev = out
-    out = layer_norm(out, **layer_norm3_params)
-    out = position_wise_ffn(out, **position_wise_ffn_params)
-    out = prev + out
+    out = sublayer_add_and_norm(
+        x=out,
+        sublayer_fn=lambda x: position_wise_ffn(x, **position_wise_ffn_params),
+        layer_norm_params=layer_norm3_params,
+    )
 
     return out
 

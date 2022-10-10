@@ -366,12 +366,12 @@ def decoder_layer(
 ###### Masking Functions #######
 ################################
 def create_pad_mask(
-    x: Int[Array, "src_seq_len"],
-    y: Int[Array, "trg_seq_len"],
+    x: Int[Array, "seq_len"],
+    nrows: int,
     pad_idx: int,
-) -> Bool[Array, "trg_seq_len src_seq_len"]:
+) -> Bool[Array, "nrows seq_len"]:
     # positions that are True are to be masked out
-    return (x == pad_idx).reshape(1, -1) | (y == pad_idx).reshape(-1, 1)
+    return jnp.repeat((x == pad_idx).reshape(1, -1), nrows, axis=0)
 
 
 def create_illegal_connections_mask(seq_len: int) -> Bool[Array, "seq_len seq_len"]:
@@ -389,12 +389,13 @@ def create_masks(
     Float[Array, "trg_seq_len src_seq_len"],
     Float[Array, "trg_seq_len trg_seq_len"],
 ]:
+    src_seq_len = src_token_ids.shape[0]
     trg_seq_len = trg_token_ids.shape[0]
 
-    encoder_src_mask = create_pad_mask(src_token_ids, src_token_ids, pad_idx) * eps
-    decoder_src_mask = create_pad_mask(src_token_ids, trg_token_ids, pad_idx) * eps
+    encoder_src_mask = create_pad_mask(src_token_ids, src_seq_len, pad_idx) * eps
+    decoder_src_mask = create_pad_mask(src_token_ids, trg_seq_len, pad_idx) * eps
     decoder_trg_mask = (
-        create_pad_mask(trg_token_ids, trg_token_ids, pad_idx)
+        create_pad_mask(trg_token_ids, trg_seq_len, pad_idx)
         | create_illegal_connections_mask(trg_seq_len)
     ) * eps
     return encoder_src_mask, decoder_src_mask, decoder_trg_mask

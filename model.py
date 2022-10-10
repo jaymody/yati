@@ -298,15 +298,17 @@ def encoder_layer(
 ) -> Float[Array, "src_seq_len d_model"]:
     # multihead attention
     prev = X
+    X = layer_norm(X, **layer_norm1_params)
     out = multihead_attention(
         Q=X, K=X, V=X, mask=src_mask, **multihead_attention_params
     )
-    out = layer_norm(prev + out, **layer_norm1_params)
+    out = prev + out
 
     # position wise ffn
     prev = out
+    out = layer_norm(out, **layer_norm2_params)
     out = position_wise_ffn(out, **position_wise_ffn_params)
-    out = layer_norm(prev + out, **layer_norm2_params)
+    out = prev + out
 
     return out
 
@@ -325,22 +327,25 @@ def decoder_layer(
 ) -> Float[Array, "trg_seq_len d_model"]:
     # masked multihead attention
     prev = X
+    X = layer_norm(X, **layer_norm1_params)
     out = multihead_attention(
         Q=X, K=X, V=X, mask=trg_mask, **masked_multihead_attention_params
     )
-    out = layer_norm(prev + out, **layer_norm1_params)
+    out = prev + out
 
     # multihead attention
     prev = out
+    out = layer_norm(out, **layer_norm2_params)
     out = multihead_attention(
         Q=out, K=Z, V=Z, mask=src_mask, **multihead_attention_params
     )
-    out = layer_norm(prev + out, **layer_norm2_params)
+    out = prev + out
 
     # position wise ffn
     prev = out
+    out = layer_norm(out, **layer_norm3_params)
     out = position_wise_ffn(out, **position_wise_ffn_params)
-    out = layer_norm(prev + out, **layer_norm3_params)
+    out = prev + out
 
     return out
 

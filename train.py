@@ -2,6 +2,7 @@ from functools import partial
 
 import jax
 import jax.numpy as jnp
+from pyparsing import Optional
 from tokenizers import Tokenizer
 
 from model import (
@@ -12,6 +13,7 @@ from model import (
 from utils import (
     PAD_index,
     SOS_index,
+    create_same_pairs,
     create_unsorted_sorted_char_pairs,
     load_wmt_2014_pairs,
     train_tokenizer,
@@ -311,9 +313,69 @@ def train(
 #     )
 
 
-def train_charsort(
-    min_length: int = 5,
-    max_length: int = 22,
+# def train_charsort(
+#     min_length: int = 5,
+#     max_length: int = 22,
+#     train_batch_size: int = 128,
+#     val_batch_size: int = 256,
+#     test_batch_size: int = 256,
+#     seed: int = 123,
+#     num_train_steps: int = 100000,
+#     lr: float = 1e-6,
+#     val_every_n_steps: int = 10,
+#     fast_dev_run: bool = True,
+# ):
+#     n_train_pairs = 500 if fast_dev_run else 10000
+#     n_val_pairs = 100 if fast_dev_run else 2000
+#     n_test_pairs = 100 if fast_dev_run else 2000
+
+#     # get data
+#     train_pairs = create_unsorted_sorted_char_pairs(
+#         n_train_pairs, min_length, max_length, seed
+#     )
+#     val_pairs = create_unsorted_sorted_char_pairs(
+#         n_val_pairs, min_length, max_length, seed
+#     )
+#     test_pairs = create_unsorted_sorted_char_pairs(
+#         n_test_pairs, min_length, max_length, seed
+#     )
+
+#     # we used a shared tokenizer between src and trg, but only train it on the
+#     # train pairs (if val and test has a token that is not learned from train pairs
+#     # we want it to show up as the UNK_token to better represent predict time accuracy)
+#     tokenizer = train_tokenizer(
+#         texts=[text for pair in train_pairs for text in pair],
+#         tokenizer_type="charlevel",
+#         vocab_size=None,
+#     )
+#     vocab_size = tokenizer.get_vocab_size()
+
+#     params_dict = initialize_transformer_params_with_shared_weight_matrix(
+#         seed=seed,
+#         vocab_size=vocab_size,
+#         **model_kwargs_for_size["tiny" if fast_dev_run else "base"],
+#     )
+
+#     train(
+#         train_pairs=train_pairs,
+#         val_pairs=val_pairs,
+#         test_pairs=test_pairs,
+#         src_tokenizer=tokenizer,
+#         trg_tokenizer=tokenizer,
+#         params_dict=params_dict,
+#         max_seq_len=max_length + 2,  # + 2 for SOS and EOS tokens
+#         train_batch_size=train_batch_size,
+#         val_batch_size=val_batch_size,
+#         test_batch_size=test_batch_size,
+#         num_train_steps=num_train_steps,
+#         val_every_n_steps=val_every_n_steps,
+#         lr=lr,
+#     )
+
+
+def train_same_pairs(
+    min_length: int = 20,
+    max_length: int = 20,
     train_batch_size: int = 128,
     val_batch_size: int = 256,
     test_batch_size: int = 256,
@@ -328,15 +390,9 @@ def train_charsort(
     n_test_pairs = 100 if fast_dev_run else 2000
 
     # get data
-    train_pairs = create_unsorted_sorted_char_pairs(
-        n_train_pairs, min_length, max_length, seed
-    )
-    val_pairs = create_unsorted_sorted_char_pairs(
-        n_val_pairs, min_length, max_length, seed
-    )
-    test_pairs = create_unsorted_sorted_char_pairs(
-        n_test_pairs, min_length, max_length, seed
-    )
+    train_pairs = create_same_pairs(n_train_pairs, min_length, max_length, seed)
+    val_pairs = create_same_pairs(n_val_pairs, min_length, max_length, seed)
+    test_pairs = create_same_pairs(n_test_pairs, min_length, max_length, seed)
 
     # we used a shared tokenizer between src and trg, but only train it on the
     # train pairs (if val and test has a token that is not learned from train pairs
@@ -375,4 +431,4 @@ if __name__ == "__main__":
     from jax.config import config
 
     config.update("jax_debug_nans", True)
-    train_charsort(fast_dev_run=False)
+    train_same_pairs(fast_dev_run=False)

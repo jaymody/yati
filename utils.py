@@ -42,6 +42,21 @@ TOKENIZER_TYPES = {
 }
 
 
+def random_sequence(
+    rng: random.Random, min_length: int, max_length: int, replace: bool, population: str
+):
+    assert min_length >= 1
+    assert max_length >= min_length
+    if replace:
+        assert max_length <= len(population)
+
+    k = rng.randint(min_length, max_length)
+    if replace:
+        return rng.choices(population, k=k)
+    else:
+        return rng.sample(population, k=k)
+
+
 def train_tokenizer(
     texts: list[str],
     tokenizer_type: str,
@@ -114,22 +129,46 @@ def create_unsorted_sorted_char_pairs(
     replace: bool = True,
     population: str = string.ascii_lowercase,
 ):
-    assert min_length >= 1
-    assert max_length >= min_length
-    if replace:
-        assert max_length <= len(population)
+    """Creates pairs where the src seqs are unsorted and trg seqs are sorted.
 
+    Example
+    -------
+    src: kjcqblkaz
+    trg: abcjkklqz
+    """
     rng = random.Random(seed)
+    rand_seq = lambda: random_sequence(rng, min_length, max_length, replace, population)
 
-    def random_sequence():
-        k = rng.randint(min_length, max_length)
-        if replace:
-            return rng.choices(population, k=k)
-        else:
-            return rng.sample(population, k=k)
+    srcs = [rand_seq() for _ in range(n_examples)]
+    trgs = [sorted(src) for src in srcs]  # sort
 
-    srcs = [random_sequence() for _ in range(n_examples)]
-    trgs = [sorted(src) for src in srcs]
+    srcs = ["".join(src) for src in srcs]
+    trgs = ["".join(trg) for trg in trgs]
+
+    pairs = list(zip(srcs, trgs))
+    return pairs
+
+
+def create_same_pairs(
+    n_examples: int,
+    min_length: int,
+    max_length: int,
+    seed: int,
+    replace: bool = True,
+    population: str = string.ascii_lowercase,
+):
+    """Create pairs where the src seqs and trg seqs are the same.
+
+    Example
+    -------
+    src: kjcqblkaz
+    trg: kjcqblkaz
+    """
+    rng = random.Random(seed)
+    rand_seq = lambda: random_sequence(rng, min_length, max_length, replace, population)
+
+    srcs = [rand_seq() for _ in range(n_examples)]
+    trgs = [src for src in srcs]  # copy
 
     srcs = ["".join(src) for src in srcs]
     trgs = ["".join(trg) for trg in trgs]

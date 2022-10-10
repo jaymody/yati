@@ -71,7 +71,12 @@ def final_linear_layer(
     X: Float[Array, "seq_len d_model"],
     final_linear_layer_matrix: Float[Array, "d_model vocab_size"],
 ) -> Float[Array, "seq_len vocab_size"]:
-    return jax.nn.softmax(X @ final_linear_layer_matrix)
+    # we skip the softmax for a couple reasons:
+    #   1. when taking the argmax for predictions, it makes no difference as softmax is
+    #      a monotonic function
+    #   2. when computing cross entropy loss, taking jnp.log(jnp.softmax(x)) is
+    #      numerically instable compared to jax.nn.log_softmax
+    return X @ final_linear_layer_matrix
 
 
 def scaled_dot_product_attention(
@@ -446,10 +451,10 @@ def decoder(
         )
 
     # (trg_seq_len, d_model) -> (trg_seq_len, trg_vocab_size)
-    next_token_probabilities = final_linear_layer(X, final_linear_layer_matrix)
+    logits = final_linear_layer(X, final_linear_layer_matrix)
 
     # (trg_seq_len, trg_vocab_size)
-    return next_token_probabilities
+    return logits
 
 
 def transformer_forward_fn(
@@ -472,7 +477,7 @@ def transformer_forward_fn(
         src_embeddings_table=src_embeddings_table,
         encoder_stack=encoder_stack,
     )
-    next_token_probabilities = decoder(
+    logits = decoder(
         trg_token_ids=trg_token_ids,
         Z=Z,
         src_mask=decoder_src_mask,
@@ -481,7 +486,7 @@ def transformer_forward_fn(
         decoder_stack=decoder_stack,
         final_linear_layer_matrix=final_linear_layer_matrix,
     )
-    return next_token_probabilities
+    return logits
 
 
 def transformer_predict_fn(
@@ -511,13 +516,13 @@ def transformer_predict_fn(
     trg_vocab_size = trg_embeddings_table.shape[0]
     trg_token_ids = jnp.ones(max_sequence_length, dtype=jnp.int32) * pad_idx
     trg_token_ids = trg_token_ids.at[0].set(sos_idx)
-    logits = jnp.empty((max_sequence_length, trg_vocab_size))
+    output_probabilities = jnp.empty((max_sequence_length, trg_vocab_size))
     for i in range(max_sequence_length):
         # decoder forward pass
         _, decoder_src_mask, decoder_trg_mask = create_masks(
             src_token_ids, trg_token_ids, pad_idx
         )
-        next_token_probabilities = decoder(
+        logits = decoder(
             trg_token_ids=trg_token_ids,
             Z=Z,
             src_mask=decoder_src_mask,
@@ -528,10 +533,12 @@ def transformer_predict_fn(
         )
 
         # next_token_probability_distribution[i] = probability the next token is i
-        next_token_probability_distribution = next_token_probabilities[-1]
+        next_token_probability_distribution = jax.nn.softmax(logits[-1])
 
-        # append probability dist to logits so we can return it to the caller
-        logits = logits.at[i].set(next_token_probability_distribution)
+        # save probabilities for the function return
+        output_probabilities = output_probabilities.at[i].set(
+            next_token_probability_distribution
+        )
 
         # token idx of the token that has the highest probability of being next
         predicted_next_token_idx = jnp.argmax(next_token_probability_distribution)

@@ -84,16 +84,14 @@ def loss_fn(src_token_ids, trg_token_ids, params_dict, pad_idx):
     # trg_token_ids -> (batch_size, trg_seq_len)
     # params_dict -> dict of params
     # output -> loss as a scalar
-    next_token_probabilities = forward_fn_batched(
-        src_token_ids, trg_token_ids, params_dict, pad_idx
-    )
+    logits = forward_fn_batched(src_token_ids, trg_token_ids, params_dict, pad_idx)
 
     # cross entropy loss
     batch_size = src_token_ids.shape[0]
-    vocab_size = next_token_probabilities.shape[-1]
-    logits = next_token_probabilities[:, :-1, :]  # skip last token
+    vocab_size = logits.shape[-1]
+    logits = logits[:, :-1, :]  # skip last token
     labels = jax.nn.one_hot(trg_token_ids[:, 1:], vocab_size)  # skip first token
-    loss = jnp.sum(labels * -jnp.log(logits)) / batch_size
+    loss = jnp.sum(labels * -jax.nn.log_softmax(logits)) / batch_size
     return loss
 
 

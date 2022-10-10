@@ -196,28 +196,41 @@ def train(
 
     # compute loss and accuracy and train and val sets
     def compute_and_print_eval_metrics(params_dict):
-        train_loss, train_acc = compute_loss_and_accuracy(
-            train_src_token_ids,
-            train_trg_token_ids,
-            params_dict,
-            train_batch_size,
-            PAD_index,
-            SOS_index,
+        # train_loss, train_acc = compute_loss_and_accuracy(
+        #     train_src_token_ids,
+        #     train_trg_token_ids,
+        #     params_dict,
+        #     train_batch_size,
+        #     PAD_index,
+        #     SOS_index,
+        #     max_seq_len,
+        # )
+        # val_loss, val_acc = compute_loss_and_accuracy(
+        #     val_src_token_ids,
+        #     val_trg_token_ids,
+        #     params_dict,
+        #     val_batch_size,
+        #     PAD_index,
+        #     SOS_index,
+        #     max_seq_len,
+        # )
+        # print(f"    train_loss = {train_loss}")
+        # print(f"    train_acc = {train_acc}")
+        # print(f"    val_loss = {val_loss}")
+        # print(f"    val_acc = {val_acc}")
+        probs = transformer_predict_fn(
+            val_src_token_ids[0],
             max_seq_len,
-        )
-        val_loss, val_acc = compute_loss_and_accuracy(
-            val_src_token_ids,
-            val_trg_token_ids,
-            params_dict,
-            val_batch_size,
-            PAD_index,
+            params_dict["shared_weight_matrix"],
+            params_dict["shared_weight_matrix"],
+            params_dict["encoder_stack"],
+            params_dict["decoder_stack"],
+            params_dict["shared_weight_matrix"].T,
             SOS_index,
-            max_seq_len,
+            PAD_index,
         )
-        print(f"    train_loss = {train_loss}")
-        print(f"    train_acc = {train_acc}")
-        print(f"    val_loss = {val_loss}")
-        print(f"    val_acc = {val_acc}")
+        print(f"prediction = {jnp.argmax(probs, axis=-1)}")
+        print(f"target     = {val_trg_token_ids[0]}")
 
     # compute metrics before model is trained for reference
     print("--- eval metrics before training ---")
@@ -306,8 +319,8 @@ def train_charsort(
     test_batch_size: int = 256,
     seed: int = 123,
     num_train_steps: int = 100000,
-    lr: float = 1e-3,
-    val_every_n_steps: int = 50,
+    lr: float = 1e-6,
+    val_every_n_steps: int = 10,
     fast_dev_run: bool = True,
 ):
     n_train_pairs = 500 if fast_dev_run else 10000

@@ -383,7 +383,7 @@ def create_masks(
     src_token_ids: Int[Array, "src_seq_len"],
     trg_token_ids: Int[Array, "trg_seq_len"],
     pad_idx: int,
-    eps: int = -1e9,
+    eps: float = -1.0e9,
 ) -> tuple[
     Float[Array, "src_seq_len src_seq_len"],
     Float[Array, "trg_seq_len src_seq_len"],

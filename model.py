@@ -112,7 +112,7 @@ def multihead_attention(
 ################################
 ### Parameter Initialization ###
 ################################
-def xavier_uniform(key: PRNGKeyType, shape: tuple[int, ...], gain: float = 1.0):
+def xavier_uniform(key: PRNGKeyType, shape: tuple[int, int], gain: float = 1.0):
     # https://pytorch.org/docs/stable/nn.init.html#torch.nn.init.xavier_uniform_
     assert len(shape) == 2
     a = gain * jnp.sqrt(6.0 / (shape[0] + shape[1]))
